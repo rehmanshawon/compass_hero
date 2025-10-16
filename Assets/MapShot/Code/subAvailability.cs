@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
 
 public class subAvailability : MonoBehaviour
 {
@@ -29,6 +30,12 @@ public class subAvailability : MonoBehaviour
        
     }
 
+    [ContextMenu("LoadScene")]
+    public void SceneReseter()
+    {
+        SceneManager.LoadScene("Main");
+    }
+
     private IEnumerator getdata()
     {
         if (PlayerPrefs.HasKey("USER_ID"))
@@ -36,7 +43,7 @@ public class subAvailability : MonoBehaviour
             
             WWWForm form = new WWWForm();
             form.AddField("user_id", PlayerPrefs.GetInt("USER_ID"));
-            UnityWebRequest request = UnityWebRequest.Post("https://subgrids.com/api/getUserSetting", form);
+            UnityWebRequest request = UnityWebRequest.Post("https://compasshero.com/api/getUserSetting", form);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.ConnectionError)

@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
@@ -48,13 +49,21 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public string ReadURL()
     {
-        return GetURLFromPage();
+        #if UNITY_WEBGL && !UNITY_EDITOR
+            return GetURLFromPage();
+        #else
+        // Fallback for Editor (so it won’t crash)
+            return "https://compasshero.com/playnow/v7/game/";
+        #endif
     }
 
     public static MainUI Instance;
     public GameObject mainUI;
     public GameObject playUI;
+    public GameObject TournamentRoomPanel;
+
     public GameObject loadingUI;
+
     //public GameObject skinUI;
     public GameObject onlineUI;
     public GameObject roomUI;
@@ -71,7 +80,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     public GameObject multiStartBtn;
     public GameObject logoInRoom;
     public GameObject prepareText;
-    public GameObject warningText;
+    public GameObject warningTextGO;
     public GameObject[] roomList;
     public Image[] roomBack;
     public GameObject[] skinList;
@@ -81,14 +90,23 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     public Text player1Name;
     public Text player2Name;
     public Text playingCount;
+
+    [Header("Main Menu Buttons")]
+    public Button createButton;
+    public Button joinButton;
+    public Button playAIButton;
+    public Button backButton;
+
     [Header("--------------- AI ----------------")]
     public static int AIlevelIndex;
+
     public static string playerNameForAI;
     public static string nameAI;
     public static bool isPlayingNormal = false;
 
     [Header("--------------- Event ----------------")]
     public GameObject eventUI;
+
     public GameObject waitingUI;
     public GameObject[] playerNamesE;
     public GameObject backEventBtn;
@@ -103,7 +121,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     bool isAvailableRound;
     public static bool isListedRound;
     bool isAvailableRoom;
-    [HideInInspector]public bool isMatched;
+    [HideInInspector] public bool isMatched;
     bool isEventTime;
     public bool isEndEvent;
     public bool isTimeRefreshed;
@@ -111,6 +129,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     [Header("--------- Skins for players ----------")]
     public Sprite[] skinSprites0;
+
     public Sprite[] skinSprites1;
     public Sprite[] skinSprites2;
     public Sprite[] skinSprites3;
@@ -127,6 +146,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     [Header("---------- Skins & Game options ----------")]
     public GameObject skinDialog;
+
     public GameObject skinDetailDialog;
     public GameObject skinsContent;
     public GameObject skinsContentOriginal;
@@ -141,7 +161,9 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     public Sprite[] optionsSprite;
     public Toggle[] skinsSelect;
     public Toggle[] optionsSelect;
+
     public Text skinDetailsTitle;
+
     //public Text onlineLevelText;
     public Text onlineOptoinsText;
     public Text optionDetailsTitle;
@@ -151,11 +173,11 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     public string selectedOptions;
     private bool isSelectingSkin = false;
 
-   public List<RoomInfo> rooms = new List<RoomInfo>();
+    public List<RoomInfo> rooms = new List<RoomInfo>();
     public static string[] playerNames = new string[2];
     public static string[] playerNamesTurn = new string[2];
-    [HideInInspector]public string selectedRoom = "";
-   public string gameVersion = "1";
+    [HideInInspector] public string selectedRoom = "";
+    public string gameVersion = "1";
     public static string gameOptions = "";
     bool isConnecting;
     bool isConnectedFirst;
@@ -179,6 +201,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public GameObject tournamnetloading;
     public GameObject TournamentWinPanel;
+
     #region MonobehaviourCallbacks
 
     private void Awake()
@@ -195,8 +218,32 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     void Start()
     {
+        string url = Application.absoluteURL.ToLower();
+        bool devActive = false;
+        try { devActive = DevAutoLogin.DevMode || Debug.isDebugBuild; } catch { devActive = Debug.isDebugBuild; }
+        bool isMultiplayer = devActive || url.Contains("/rel07/") || url.Contains("?id=");
+
+        if (!isMultiplayer)
+        {
+            // Single Player (AI mode)
+            createButton.gameObject.SetActive(false);
+            joinButton.gameObject.SetActive(false);
+            Debug.Log("🟢 AI Mode Detected — Hiding Create/Join Buttons");
+        }
+        else
+        {
+            // Multiplayer Mode
+            createButton.gameObject.SetActive(true);
+            joinButton.gameObject.SetActive(true);
+            if (devActive)
+                Debug.Log("🔵 Dev/Debug build — Forcing Multiplayer Mode (showing all buttons)");
+            else
+                Debug.Log("🔵 Multiplayer Mode Detected — Showing All Buttons");
+        }
+
+
         mainUI.transform.localScale = new Vector3(Screen.width / 1366f, Screen.height / 768f, 1f);
-        Debug.Log("lobby available " +PhotonNetwork.InLobby);
+        Debug.Log("lobby available " + PhotonNetwork.InLobby);
         Debug.Log("was in tournament " + TournamentLobbyCreator.isInTournament());
 
         StartCoroutine(ClearCacheRoutine());
@@ -206,31 +253,27 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         }
         if (!TournamentLobbyCreator.isInTournament())
         {
-            PhotonNetwork.Disconnect();
+            // In Dev/Debug builds, don't disconnect here; DevAutoLogin will manage connection
+            if (!devActive)
+                PhotonNetwork.Disconnect();
             tournamnetloading.SetActive(false);
         }
         else
         {
-
-
-
             playerNameCreate.text = TournamentLobbyCreator.GetPlayerName();
 
             Invoke("Connect", 3);
             Connect();
             tournamnetloading.SetActive(true);
 
-           // Invoke(nameof(ReconnetToTournament), 5);
+            // Invoke(nameof(ReconnetToTournament), 5);
         }
-    
+
         selectButtonInit();
     }
     public void WonTournament()
     {
         TournamentWinPanel.SetActive(true);
-
-        TournamentLobbyCreator.setroundCount(0);
-
     }
     public void ContinueFromTournament()
     {
@@ -238,6 +281,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         SceneManager.LoadScene("Main");
         PhotonNetwork.Disconnect();
     }
+
     public void ReconnetToTournament()
     {
         JoinBtnClick(true, TournamentLobbyCreator.TournamentRoomName);
@@ -271,12 +315,24 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         selectedOptions = "0000";
 
         Debug.Log("Getting URL");
+        bool devActive = false;
+        try { devActive = DevAutoLogin.DevMode || Debug.isDebugBuild; } catch { devActive = Debug.isDebugBuild; }
 
-
-        // Real parameters
-        PlayerPrefs.SetInt("USER_ID", GetUserId(ReadURL()));
-        Debug.Log($"User ID being set {GetUserId(ReadURL())}");
-        frontURL = ReadURL().Split("/")[0] + "//" + ReadURL().Split("/")[2];
+        string pageUrl = ReadURL();
+        if (!devActive && !string.IsNullOrEmpty(pageUrl) && pageUrl.Contains("?id="))
+        {
+            try
+            {
+                int uid = GetUserId(pageUrl);
+                PlayerPrefs.SetInt("USER_ID", uid);
+                Debug.Log($"User ID being set {uid}");
+                frontURL = pageUrl.Split("/")[0] + "//" + pageUrl.Split("/")[2];
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"Failed to derive USER_ID/frontURL from page URL: {ex.Message}");
+            }
+        }
 
         // ------------------------ Test parameters -------------------------
         //gameOptions = "@^*";
@@ -288,8 +344,11 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         //PlayerPrefs.SetInt("USER_ID", 4);
         //frontURL = "https://wargrids.com";
 
-        StartCoroutine(GetUserInfos(frontURL + "/api/getUserData"));
-    }    
+        if (!devActive && !string.IsNullOrEmpty(frontURL))
+        {
+            StartCoroutine(GetUserInfos(frontURL + "/api/getUserData"));
+        }
+    }
 
     void Update()
     {
@@ -313,11 +372,13 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             LeaveRound();
             isEndEvent = false;
-            StartCoroutine(DelayToShowAlert("Sorry, not enough players, please join again next Friday and tell your friends!"));
+            StartCoroutine(
+                DelayToShowAlert("Sorry, not enough players, please join again next Friday and tell your friends!"));
         }
     }
 
     #region AI game mode
+
     public void PlaySoloBtnClick()
     {
         isTournament = false;
@@ -329,20 +390,23 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             //aiSelectionUI.SetActive(true);
 
-       
-                playerNameForAI = playerNameCreate.text;
-                playerNames[0] = playerNameForAI;
-         
-            
+
+            playerNameForAI = playerNameCreate.text;
+            playerNames[0] = playerNameForAI;
+
+
             //   StartCoroutine(setCustomDataforAI());
             SelectAIPlayer(0);
-
         }
     }
+
     public string getAiName()
     {
-        return TournamentLobbyCreator.isAiPLayingTournament ? PlayerPrefs.GetString(Prefs.otherplayername, "PEE WEE") : "PEE WEE";
+        return TournamentLobbyCreator.isAiPLayingTournament
+            ? PlayerPrefs.GetString(Prefs.otherplayername, "PEE WEE")
+            : "PEE WEE";
     }
+
     public void SelectAIPlayer(int levelIndex)
     {
         AIlevelIndex = levelIndex;
@@ -353,43 +417,50 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         switch (AIlevelIndex)
         {
             case 0:
-                {
-                    nameAI = "Pee Wee";                    
-                    skinIndex3 = 6;
-                    skinIndex4 = 6;
-                }
+            {
+                nameAI = "Pee Wee";
+                skinIndex3 = 6;
+                skinIndex4 = 6;
+            }
                 break;
             case 1:
-                {
-                    nameAI = "Iron Man";
-                    skinIndex3 = 0;
-                    skinIndex4 = 9;
-                }
+            {
+                nameAI = "Iron Man";
+                skinIndex3 = 0;
+                skinIndex4 = 9;
+            }
                 break;
             case 2:
-                {
-                    nameAI = "Hercules";
-                    skinIndex3 = 0;
-                    skinIndex4 = 13;
-                }
+            {
+                nameAI = "Hercules";
+                skinIndex3 = 0;
+                skinIndex4 = 13;
+            }
                 break;
         }
+
         if (TournamentLobbyCreator.isAiPLayingTournament)
         {
             nameAI = getAiName();
-
         }
-        
+        else
+        {
+            PlayerPrefs.SetString(Prefs.AiPref,nameAI);
+            PlayerPrefs.Save();
+        }
+
         playerNames[1] = nameAI;
         SceneManager.LoadScene("Single");
     }
+
     #endregion
 
     public void OpenMyCheese()
     {
-        Application.OpenURL("https://subgrids.com/mycheese#");
+        Application.OpenURL("https://compasshero.com/mycheese#");
     }
-   void ConnectToRegion()
+
+    void ConnectToRegion()
     {
         AppSettings regionSettings = new()
         {
@@ -408,19 +479,9 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     // Get user_id from gameURL.
     public int GetUserId(string gameUrl)
     {
-        string temp = "";
-
-        for (int i = 0; i < gameUrl.Length; i++)
-        {
-            temp += gameUrl[i];
-
-            if (gameUrl[i] == '=')
-            {
-                temp = "";
-            }
-        }
-
+        if (string.IsNullOrEmpty(gameUrl)) throw new System.ArgumentNullException(nameof(gameUrl));
         var id = MapShotAvailabilityChecker.GetUrlParameter("id");
+        if (string.IsNullOrEmpty(id)) throw new System.ArgumentNullException("id", "Missing URL parameter 'id'");
         return int.Parse(id);
     }
 
@@ -428,56 +489,46 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         print("Refresh room");
 
-        List<int> removedRooms = new List<int>();
-        
-        for (int i = 0; i < rooms.Count - 1; i++)
+        // Rebuild a clean, de-duplicated, filtered view of rooms:
+        // - only visible, open rooms
+        // - 2-player rooms for normal matchmaking UI
+        // - unique by name (Photon may send updates that would create duplicates if appended)
+        if (rooms == null)
         {
-            for (int j = i + 1; j < rooms.Count; j++)
-            {
-                if (rooms[i].Name == rooms[j].Name)
-                {
-                    removedRooms.Add(j);
-                }                
-            }            
+            rooms = new List<RoomInfo>();
         }
 
-        for(int i = 0; i < rooms.Count; i++)
-        {
-            if (rooms[i].MaxPlayers == roundIndices)
-            {
-                removedRooms.Add(i);
-            }
-        }
+        var filtered = rooms
+            .Where(r => r != null && r.IsVisible && r.IsOpen && !r.RemovedFromList && r.MaxPlayers == 2)
+            .GroupBy(r => r.Name)
+            .Select(g => g.First())
+            .ToList();
 
-        for(int i = 0; i < removedRooms.Count; i++)
-        {
-            rooms.RemoveAt(removedRooms[i]);
-        }
+        // Update internal cache to the filtered snapshot to avoid stale entries later
+        rooms = filtered;
 
+        // Reset all UI slots
         for (int i = 0; i < roomList.Length; i++)
         {
             roomList[i].SetActive(false);
         }
 
-       
-
-        for (int i = 0; i < rooms.Count; i++)
+        // Populate visible entries
+        int count = Mathf.Min(filtered.Count, roomList.Length);
+        for (int i = 0; i < count; i++)
         {
-         //   if (!rooms[i].Name.Equals(TournamentLobbyCreator.TournamentRoomName))
-            {
-                roomList[i].SetActive(true);
-                roomName[i].text = rooms[i].Name;
+            roomList[i].SetActive(true);
+            roomName[i].text = filtered[i].Name;
 
-                if (string.Equals(selectedRoom, roomName[i].text))
-                {
-                    roomBack[i].color = Color.red;
-                    roomName[i].color = Color.red;
-                }
-                else
-                {
-                    roomBack[i].color = Color.black;
-                    roomName[i].color = Color.white;
-                }
+            if (string.Equals(selectedRoom, roomName[i].text))
+            {
+                roomBack[i].color = Color.green;
+                roomName[i].color = Color.green;
+            }
+            else
+            {
+                roomBack[i].color = Color.black;
+                roomName[i].color = Color.white;
             }
         }
     }
@@ -491,7 +542,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
         for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
         {
-            playerNamesE[i + indexPlus].transform.GetChild(0).GetComponent<Text>().text = PhotonNetwork.PlayerList[i].NickName;
+            playerNamesE[i + indexPlus].transform.GetChild(0).GetComponent<Text>().text =
+                PhotonNetwork.PlayerList[i].NickName;
         }
     }
 
@@ -499,15 +551,16 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         alertText.text = str;
         alert.SetActive(true);
-        
+
         yield return new WaitForSeconds(2f);
 
         alert.SetActive(false);
     }
 
-#endregion
+    #endregion
 
     #region PhotonMonobehaviourCallbacks
+
     public void Connect()
     {
         // event logic implemented
@@ -549,11 +602,10 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             isJoinedEvent = false;
             isConnecting = true;
 
-            if(!PhotonNetwork.InLobby)
+            if (!PhotonNetwork.InLobby && PhotonNetwork.NetworkClientState == ClientState.ConnectedToMaster)
+            {
                 PhotonNetwork.JoinLobby(TypedLobby.Default);
-            
-
-           
+            }
         }
         else
         {
@@ -564,6 +616,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             playUI.SetActive(false);
             loadingUI.SetActive(true);
         }
+
         if (PhotonNetwork.InLobby)
         {
             if (TournamentLobbyCreator.isInTournament())
@@ -576,7 +629,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     public void JoinEvent()
     {
         isAvailableEvent = true;
-        
+
         if (isAvailableEvent)
         {
             isConnectedFirst = true;
@@ -593,19 +646,19 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             else
             {
                 ConnectToRegion();
-            }                                                        
+            }
         }
         else
         {
-            if((eventParameter.hour == 19 || eventParameter.hour == 20) && eventParameter.day == "Friday")
+            if ((eventParameter.hour == 19 || eventParameter.hour == 20) && eventParameter.day == "Friday")
             {
                 StartCoroutine(DelayToShowAlert("Sorry! Pee Wee Event is full."));
             }
             else
             {
                 StartCoroutine(DelayToShowAlert("PEE WEE EVENT will start at Friday 7pm."));
-            }                        
-        }                
+            }
+        }
     }
 
     public void CreateRound()
@@ -613,7 +666,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         RoomOptions roomOptions = new RoomOptions();
         roomOptions.IsOpen = true;
         roomOptions.IsVisible = true;
-        roomOptions.MaxPlayers = (byte)roundIndices;  
+        roomOptions.MaxPlayers = (byte)roundIndices;
 
         PhotonNetwork.CreateRoom("Round1", roomOptions, TypedLobby.Default);
     }
@@ -630,7 +683,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         isJoinedEvent = false;
         isListedRound = false;
         playUI.SetActive(true);
-        eventUI.SetActive(false);  
+        eventUI.SetActive(false);
     }
 
     public void LeaveRoundForEvent()
@@ -638,11 +691,11 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         print("Leave round for event");
         PhotonNetwork.LeaveRoom();
         if (!PhotonNetwork.InLobby)
-            PhotonNetwork.JoinLobby(TypedLobby.Default);        
+            PhotonNetwork.JoinLobby(TypedLobby.Default);
     }
 
     public void CreateGame()
-    {        
+    {
         RoomOptions roomOptions = new RoomOptions();
         roomOptions.IsOpen = true;
         roomOptions.IsVisible = true;
@@ -673,7 +726,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                         PhotonNetwork.JoinRoom("Round1");
                         print("Random joining...");
                         break;
-                    }          
+                    }
                 }
             }
 
@@ -691,8 +744,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     }
 
     IEnumerator DelaytoMatch()
-    {   
-        yield return new WaitForSeconds(3f + delayTimeRound);        
+    {
+        yield return new WaitForSeconds(3f + delayTimeRound);
 
         if (isAvailableRoom)
         {
@@ -701,10 +754,10 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                 if (rooms[i].IsOpen && rooms[i].IsVisible)
                 {
                     print("Random joining...");
-                    print(rooms[i].Name);          
-                    PhotonNetwork.JoinRoom(rooms[i].Name);                    
+                    print(rooms[i].Name);
+                    PhotonNetwork.JoinRoom(rooms[i].Name);
                     break;
-                } 
+                }
             }
 
             if (PhotonNetwork.NetworkClientState != ClientState.Joining
@@ -756,9 +809,32 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public override void OnConnectedToMaster()
     {
+        // When DevAutoLogin is orchestrating a direct JoinOrCreateRoom flow,
+        // avoid calling JoinLobby here to prevent state conflicts (JoinLobby while Joining).
+        try
+        {
+            if (DevAutoLogin.DevMode)
+            {
+                // In Dev mode, always clear the loading/connecting overlay ASAP
+                if (loadingUI != null) loadingUI.SetActive(false);
+                // Show the basic online UI (safe default) while DevAutoLogin manages joining
+                if (onlineUI != null) onlineUI.SetActive(true);
+                if (playUI != null) playUI.SetActive(false);
+
+                if (PhotonNetwork.NetworkClientState == ClientState.Joining || PhotonNetwork.InRoom)
+                {
+                    UnityEngine.Debug.Log("MainUI.OnConnectedToMaster: DevMode active; skipping lobby join while joining/in room.");
+                    return;
+                }
+                // Even if not yet joining, Dev mode manages its own flow; skip to avoid races.
+                UnityEngine.Debug.Log("MainUI.OnConnectedToMaster: DevMode active; skipping lobby join.");
+                return;
+            }
+        }
+        catch { /* DevAutoLogin may not be compiled in some targets; ignore */ }
+
         if (isTournament)
         {
-
         }
         else
         {
@@ -766,26 +842,26 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             {
                 loadingUI.SetActive(false);
                 onlineUI.SetActive(true);
-                if (!PhotonNetwork.InLobby)
+                if (!PhotonNetwork.InLobby && PhotonNetwork.NetworkClientState == ClientState.ConnectedToMaster)
                     PhotonNetwork.JoinLobby(TypedLobby.Default);
             }
             else if (isJoinedEvent)
             {
-                if (!PhotonNetwork.InLobby)
+                if (!PhotonNetwork.InLobby && PhotonNetwork.NetworkClientState == ClientState.ConnectedToMaster)
                     PhotonNetwork.JoinLobby(TypedLobby.Default);
             }
             else if (isListedRound)
             {
-                if (!PhotonNetwork.InLobby)
+                if (!PhotonNetwork.InLobby && PhotonNetwork.NetworkClientState == ClientState.ConnectedToMaster)
                     PhotonNetwork.JoinLobby(TypedLobby.Default);
             }
         }
-    }    
+    }
 
     public override void OnDisconnected(DisconnectCause cause)
     {
         SceneManager.LoadScene("Main");
-      //  print("Disconnect.");
+        //  print("Disconnect.");
     }
 
     public override void OnJoinedLobby()
@@ -799,25 +875,24 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         else if (isJoinedEvent)
         {
             //PhotonNetwork.NickName = PlayerPrefs.GetString("PLAYER_NAME") + " L" + PlayerPrefs.GetInt("LEVEL");
-            
+
             PhotonNetwork.NickName = PlayerPrefs.GetString("PLAYER_NAME");
-            
+
             StartCoroutine(DelayForJoinning());
         }
         else if (isListedRound)
         {
             //PhotonNetwork.NickName = PlayerPrefs.GetString("PLAYER_NAME") + " L" + PlayerPrefs.GetInt("LEVEL");
 
-            PhotonNetwork.NickName = PlayerPrefs.GetString("PLAYER_NAME");   
-            
+            PhotonNetwork.NickName = PlayerPrefs.GetString("PLAYER_NAME");
+
             waitingUI.SetActive(true);
             StartCoroutine(DelaytoMatch());
         }
 
-        bool shouldstartTournament=true;
+        bool shouldstartTournament = true;
         if (shouldstartTournament)
         {
-
             //RoomOptions roomOptions = new RoomOptions();
             //roomOptions.MaxPlayers = (byte)TournamentLobbyCreator.MaxPlayersInTournament;
             //roomOptions.CleanupCacheOnLeave = false;
@@ -827,32 +902,29 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             //PhotonNetwork.KeepAliveInBackground = 60000;
             //PhotonNetwork.CreateRoom(TournamentLobbyCreator.TournamentRoomName, roomOptions, TypedLobby.Default);
         }
-        if(TournamentLobbyCreator.isInTournament())
+
+        if (TournamentLobbyCreator.isInTournament())
         {
             JoinBtnClick(true, TournamentLobbyCreator.TournamentRoomName);
         }
-
-
     }
+
     private IEnumerator setTimerTime()
     {
         float durationInSeconds = 120f;
         WWWForm form = new WWWForm();
         form.AddField("user_id", PlayerPrefs.GetInt("USER_ID"));
-        UnityWebRequest request = UnityWebRequest.Post("https://subgrids.com/api/getUserSetting", form);
+        UnityWebRequest request = UnityWebRequest.Post("https://compasshero.com/api/getUserSetting", form);
         yield return request.SendWebRequest();
 
         if (request.result == UnityWebRequest.Result.ConnectionError)
         {
             Debug.LogError("Turn: Error While Sending: " + request.error);
             durationInSeconds = 120f;
-
         }
         else
         {
             Debug.LogError("Turn: Received: " + request.downloadHandler.text);
-
-
 
 
             Root parsedJson = JsonConvert.DeserializeObject<Root>(request.downloadHandler.text);
@@ -866,34 +938,32 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         }
 
         ExitGames.Client.Photon.Hashtable customProperties = new ExitGames.Client.Photon.Hashtable
-            {
-                 { "AnimationDuration", durationInSeconds}
-            };
+        {
+            { "AnimationDuration", durationInSeconds }
+        };
         PhotonNetwork.CurrentRoom.SetCustomProperties(customProperties);
     }
+
     private IEnumerator setCustomDataforAI()
     {
         Debug.LogError("Setting ai data");
-        PlayerPrefs.SetInt("USER_ID",54);
+        PlayerPrefs.SetInt("USER_ID", 54);
         PlayerPrefs.Save();
         float durationInSeconds = 120f;
         string waveType = "";
         WWWForm form = new WWWForm();
         form.AddField("user_id", PlayerPrefs.GetInt("USER_ID"));
-        UnityWebRequest request = UnityWebRequest.Post("https://subgrids.com/api/getUserSetting", form);
+        UnityWebRequest request = UnityWebRequest.Post("https://compasshero.com/api/getUserSetting", form);
         yield return request.SendWebRequest();
 
         if (request.result == UnityWebRequest.Result.ConnectionError)
         {
             Debug.LogError("Turn: Error While Sending: " + request.error);
             durationInSeconds = 120f;
-
         }
         else
         {
             Debug.LogError("Turn: Received: " + request.downloadHandler.text);
-
-
 
 
             Root parsedJson = JsonConvert.DeserializeObject<Root>(request.downloadHandler.text);
@@ -905,27 +975,151 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             {
                 durationInSeconds = 120f;
             }
+
             Debug.LogError("waveinit : " + waveType);
         }
 
         ExitGames.Client.Photon.Hashtable customProperties = new ExitGames.Client.Photon.Hashtable
-            {
-                 { "Ai_AnimationDuration", durationInSeconds},
-            {"Ai_WaveType",waveType }
-            };
+        {
+            { "Ai_AnimationDuration", durationInSeconds },
+            { "Ai_WaveType", waveType }
+        };
         PhotonNetwork.CurrentRoom.SetCustomProperties(customProperties);
     }
 
     [PunRPC()]
     public void RPC_AddToTOurnamentRoomlist()
     {
-
     }
+
+
     public override void OnJoinedRoom()
     {
+        // Dev mode: keep it simple and avoid production flows (API/tournament logic)
+        try
+        {
+            if (DevAutoLogin.DevMode)
+            {
+                UnityEngine.Debug.Log("MainUI.OnJoinedRoom: Dev mode active; skipping production OnJoinedRoom flow.");
+                if (loadingUI != null) loadingUI.SetActive(false);
+                if (onlineUI != null) onlineUI.SetActive(false);
+                if (playUI != null) playUI.SetActive(false);
+                if (roomUI != null) roomUI.SetActive(true);
+
+                var players = PhotonNetwork.PlayerList;
+                if (PhotonNetwork.IsMasterClient)
+                {
+                    // Use short fixed names for dev/testing readability
+                    string p1 = "Rehman";
+                    string p2 = "Shawon";
+                    if (player1Name != null) player1Name.text = p1;
+                    playerNames[0] = p1;
+                    // Build display labels; keep actor numbers out to keep it short
+                    playerNamesTurn[0] = p1;
+                    if (players != null && players.Length > 1)
+                    {
+                        var other = players.FirstOrDefault(p => p.ActorNumber != PhotonNetwork.LocalPlayer.ActorNumber);
+                        if (other != null)
+                        {
+                            if (player2Name != null) player2Name.text = p2;
+                            playerNames[1] = p2;
+                            playerNamesTurn[1] = p2;
+                        }
+                        if (multiStartBtn != null) multiStartBtn.SetActive(true);
+                        if (logoInRoom != null) logoInRoom.SetActive(false);
+                        if (prepareText != null) prepareText.SetActive(true);
+                        if (warningTextGO != null) warningTextGO.SetActive(false);
+                        if (PhotonNetwork.CurrentRoom != null)
+                        {
+                            PhotonNetwork.CurrentRoom.IsOpen = false;
+                            PhotonNetwork.CurrentRoom.IsVisible = false;
+                        }
+                    }
+                    else
+                    {
+                        if (player2Name != null) player2Name.text = "Open";
+                        playerNames[1] = "Open";
+                        playerNamesTurn[1] = "Open";
+                        if (multiStartBtn != null) multiStartBtn.SetActive(false);
+                        if (logoInRoom != null) logoInRoom.SetActive(true);
+                        if (prepareText != null) prepareText.SetActive(false);
+                        if (warningTextGO != null) warningTextGO.SetActive(true);
+                    }
+                }
+                else
+                {
+                    // Keep names consistent regardless of perspective for dev/testing
+                    string p1 = "Rehman";
+                    string p2 = "Shawon";
+                    if (player1Name != null) player1Name.text = p1;
+                    if (player2Name != null) player2Name.text = p2;
+                    playerNames[0] = p1;
+                    playerNames[1] = p2;
+                    playerNamesTurn[0] = p1;
+                    playerNamesTurn[1] = p2;
+                    if (multiStartBtn != null) multiStartBtn.SetActive(false);
+                    if (logoInRoom != null) logoInRoom.SetActive(false);
+                    if (prepareText != null) prepareText.SetActive(true);
+                    if (warningTextGO != null) warningTextGO.SetActive(false);
+                }
+
+                if (player1Avatar != null && player1Skins != null && player1Skins.Length > 0)
+                {
+                    var idx = Mathf.Clamp(PlayerPrefs.GetInt("SKIN1", 0), 0, player1Skins.Length - 1);
+                    player1Avatar.GetComponent<Image>().sprite = player1Skins[idx];
+                }
+                if (player2Avatar != null && player2Skins != null && player2Skins.Length > 0)
+                {
+                    player2Avatar.GetComponent<Image>().sprite = player2Skins[0];
+                }
+
+                // Update flags to reflect that we're no longer in a connecting flow
+                isConnecting = false;
+
+                if (PhotonNetwork.IsMasterClient && PhotonNetwork.CurrentRoom != null)
+                {
+                    float durationInSeconds = 120f;
+                    ExitGames.Client.Photon.Hashtable devProps = new ExitGames.Client.Photon.Hashtable { { "AnimationDuration", durationInSeconds } };
+                    PhotonNetwork.CurrentRoom.SetCustomProperties(devProps);
+                }
+                return;
+            }
+        }
+        catch { }
+
         if (PhotonNetwork.CurrentRoom.Name == TournamentLobbyCreator.TournamentRoomName)
         {
             tournamnetloading.SetActive(false);
+            int plcount = PlayerPrefs.GetInt(Prefs.playerCount, 0);
+            int rcount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
+            if (rcount > 0)
+            {
+                PhotonNetwork.CurrentRoom.IsVisible = false;
+                if (PhotonNetwork.PlayerList.ToArray().Length < plcount)
+                {
+                    // Dev mode: keep it simple and avoid production flows
+                    try
+                    {
+                        if (DevAutoLogin.DevMode)
+                        {
+                            UnityEngine.Debug.Log("MainUI.OnJoinedRoom: Dev mode active; skipping production OnJoinedRoom flow.");
+                            if (PhotonNetwork.IsMasterClient)
+                            {
+                                float durationInSeconds = 120f;
+                                ExitGames.Client.Photon.Hashtable devProps = new ExitGames.Client.Photon.Hashtable { { "AnimationDuration", durationInSeconds } };
+                                PhotonNetwork.CurrentRoom.SetCustomProperties(devProps);
+                            }
+                            return;
+                        }
+                    }
+                    catch { }
+                }
+                else //Start gameplay
+                {
+                    Debug.Log("Tournament-Started by AI");
+                    TournamentLobbyCreator.Instance.StartTournamentNow();
+                }
+            }
         }
 
         if (isTournament)
@@ -946,15 +1140,17 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                 if (!PhotonNetwork.IsMasterClient)
                 {
                     SyncSkin(new object[] { PlayerPrefs.GetInt("SKIN1"), PlayerPrefs.GetInt("SKIN2"), 1 });
-                    Debug.LogError("Setting ai data2");
                     //    StartCoroutine(setCustomDataforAI());
                 }
                 else
                 {
-                    Debug.LogError("Setting ai data1");
+                    // Keep the room open/visible so the opponent can join; hide only after OnPlayerEnteredRoom
+                    if (PhotonNetwork.CurrentRoom != null)
+                    {
+                        PhotonNetwork.CurrentRoom.IsOpen = true;
+                        PhotonNetwork.CurrentRoom.IsVisible = true;
+                    }
                     StartCoroutine(setTimerTime());
-
-
                 }
             }
             else if (isJoinedEvent)
@@ -991,43 +1187,67 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                     RefreshRound(roundIndices);
                 }
             }
-            else if (isListedRound)
-            {
-                playerNames[0] = PhotonNetwork.CurrentRoom.Name;
-                playerNames[1] = PhotonNetwork.NickName;
 
-                if (PhotonNetwork.IsMasterClient)
-                {
-                    StartCoroutine(DelayToStopCreate());
-                }
+            if (PhotonNetwork.IsMasterClient)
+            {
+                // Do not auto-leave rooms in normal matchmaking; waiting for an opponent can take time in WebGL
+                // StartCoroutine(DelayToStopCreate());
             }
         }
     }
 
     public override void OnCreatedRoom()
     {
-        print("Create Room.");              
+        print("Create Room.");
     }
 
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
+        // Dev mode: update UI when a second player joins
+        try
+        {
+            if (DevAutoLogin.DevMode)
+            {
+                string p1 = "Rehman";
+                string p2 = "Shawon";
+                if (player2Name != null) player2Name.text = p2;
+                // Keep shared names array updated for turn UI
+                playerNames[0] = p1;
+                playerNames[1] = p2;
+                playerNamesTurn[0] = p1;
+                playerNamesTurn[1] = p2;
+                if (multiStartBtn != null) multiStartBtn.SetActive(PhotonNetwork.IsMasterClient);
+                if (logoInRoom != null) logoInRoom.SetActive(false);
+                if (prepareText != null) prepareText.SetActive(true);
+                if (warningTextGO != null) warningTextGO.SetActive(false);
+                if (PhotonNetwork.IsMasterClient && PhotonNetwork.CurrentRoom != null)
+                {
+                    PhotonNetwork.CurrentRoom.IsOpen = false;
+                    PhotonNetwork.CurrentRoom.IsVisible = false;
+                }
+                return;
+            }
+        }
+        catch { }
+
         if (isTournament)
         {
-
         }
         else
         {
             if (isConnecting)
             {
-
-                
                 player2Name.text = newPlayer.NickName;
                 playerNames[1] = player2Name.text;
                 multiStartBtn.SetActive(true);
                 logoInRoom.SetActive(false);
                 prepareText.SetActive(true);
-                warningText.SetActive(false);
+                warningTextGO.SetActive(false);
+                isMatched = true;
+                
+                Debug.Log("Warning Text is waiting");
 
+                // Now that two players are in, prevent further joins
                 PhotonNetwork.CurrentRoom.IsOpen = false;
                 PhotonNetwork.CurrentRoom.IsVisible = false;
 
@@ -1073,14 +1293,33 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
     {
+        // Dev mode: reset UI to waiting state
+        try
+        {
+            if (DevAutoLogin.DevMode)
+            {
+                if (player2Name != null) player2Name.text = "Open";
+                playerNames[1] = "Open";
+                playerNamesTurn[1] = "Open";
+                if (multiStartBtn != null) multiStartBtn.SetActive(false);
+                if (logoInRoom != null) logoInRoom.SetActive(true);
+                if (prepareText != null) prepareText.SetActive(false);
+                if (warningTextGO != null) warningTextGO.SetActive(true);
+                if (PhotonNetwork.CurrentRoom != null)
+                {
+                    PhotonNetwork.CurrentRoom.IsOpen = true;
+                    PhotonNetwork.CurrentRoom.IsVisible = true;
+                }
+                return;
+            }
+        }
+        catch { }
+
         if (isTournament)
         {
-
         }
         else
         {
-
-
             if (isConnecting)
             {
                 player2Name.text = "Open";
@@ -1088,7 +1327,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                 multiStartBtn.SetActive(false);
                 logoInRoom.SetActive(true);
                 prepareText.SetActive(false);
-                warningText.SetActive(true);
+                warningTextGO.SetActive(true);
 
                 PhotonNetwork.CurrentRoom.IsOpen = true;
                 PhotonNetwork.CurrentRoom.IsVisible = true;
@@ -1110,8 +1349,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             waitingUI.SetActive(false);
             playUI.SetActive(true);
-            isJoinedEvent = false; 
-            
+            isJoinedEvent = false;
+
             if (!PhotonNetwork.InLobby)
                 PhotonNetwork.JoinLobby(TypedLobby.Default);
             StartCoroutine(DelayToShowAlert("Sorry! Pee Wee Event is full."));
@@ -1133,8 +1372,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     }
 
     public override void OnJoinRoomFailed(short returnCode, string message)
-    {      
-        Debug.LogError($"Failed to join room:   {returnCode}" + message);      
+    {
+        Debug.LogError($"Failed to join room:   {returnCode} " + message);
 
         if (isJoinedEvent)
         {
@@ -1165,9 +1404,12 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         if (isConnecting)
         {
-            if(!TournamentLobbyCreator.isInTournament())
-            LeaveRoomBtnClick();
-        }                
+            // Avoid disruptive leave while still connecting/browsing. Only act if we are inside a room and not in tournament.
+            if (PhotonNetwork.InRoom && !TournamentLobbyCreator.isInTournament())
+            {
+                LeaveRoomBtnClick();
+            }
+        }
     }
 
     public override void OnRoomListUpdate(List<RoomInfo> roomLists)
@@ -1175,108 +1417,49 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         base.OnRoomListUpdate(roomLists);
         Debug.Log("in main room list update");
         testOutput.text = "updated";
+        // Always rebuild cache from the latest snapshot provided by Photon to avoid stale/duplicate entries
+        if (roomLists == null)
+        {
+            rooms = new List<RoomInfo>();
+        }
+        else
+        {
+            rooms = roomLists
+                .Where(r => r != null)
+                .ToList();
+        }
+
+        // Reset one-time flag
+        isConnectedFirst = false;
 
         if (isConnecting)
         {
-            if (isConnectedFirst)
-            {
-                rooms = roomLists;
-                isConnectedFirst = false;
-                RefreshRoomList();
-            }
-            else
-            {
-                foreach (RoomInfo info in roomLists)
-                {
-                    if (info.MaxPlayers == 2)
-                    {
-                        if (info.RemovedFromList)
-                        {
-                            rooms.Remove(info);
-                            print("Removed 2");
-                            RefreshRoomList();
-                        }
-                        else
-                        {
-                            rooms.Add(info);
-                            print("Added 2");
-                            RefreshRoomList();
-                        }
-                    }
-                }
-            }
+            RefreshRoomList();
         }
         else if (isJoinedEvent)
         {
-            if (isConnectedFirst)
-            {
-                rooms = roomLists;
-                isConnectedFirst = false;
-            }
-            else
-            {
-                foreach (RoomInfo info in roomLists)
-                {
-                    if (info.MaxPlayers == roundIndices)
-                    {
-                        if (info.RemovedFromList)
-                        {
-                            rooms.Remove(info);
-                        }
-                        else
-                        {
-                            rooms.Add(info);
-                        }
-                    }
-                }
-            }
+            // Filter by current round size for event flow
+            rooms = rooms
+                .Where(r => r.MaxPlayers == roundIndices && r.IsVisible && r.IsOpen && !r.RemovedFromList)
+                .GroupBy(r => r.Name)
+                .Select(g => g.First())
+                .ToList();
 
             isAvailableRound = false;
 
-            for (int i = 0; i < rooms.Count; i++)
-            {
-                if (rooms[i].MaxPlayers == roundIndices)
-                {
-                    isAvailableRound = true;
-                    break;
-                }
-            }
+            isAvailableRound = rooms.Any(r => r.MaxPlayers == roundIndices);
         }
         else if (isListedRound)
         {
-            if (isConnectedFirst)
-            {
-                rooms = roomLists;
-                isConnectedFirst = false;                
-            }
-            else
-            {
-                foreach (RoomInfo info in roomLists)
-                {
-                    if (info.RemovedFromList)
-                    {
-                        rooms.Remove(info);
-                        print("Removed");                     
-                    }
-                    else
-                    {
-                        rooms.Add(info);
-                        print("Added");                 
-                    }
-                }
-            }
+            rooms = rooms
+                .Where(r => r.IsVisible && r.IsOpen && !r.RemovedFromList)
+                .GroupBy(r => r.Name)
+                .Select(g => g.First())
+                .ToList();
 
             isAvailableRoom = false;
-
-            for (int i = 0; i < rooms.Count; i++)
-            {
-                if (rooms[i].MaxPlayers == 2)
-                {
-                    isAvailableRoom = true;
-                    print("Available: " + isAvailableRoom);
-                    break;
-                }
-            }
+            isAvailableRoom = rooms.Any(r => r.MaxPlayers == 2);
+            print("Available: " + isAvailableRoom);
         }
     }
 
@@ -1320,7 +1503,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         byte eventCode = photonEvent.Code;
 
-        if(eventCode == 100)
+        if (eventCode == 100)
         {
             object[] infos = (object[])photonEvent.CustomData;
 
@@ -1331,7 +1514,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
                 player1Avatar.GetComponent<Image>().sprite = player1Skins[skinIndex1];
                 player2Avatar.GetComponent<Image>().sprite = player2Skins[skinIndex4];
-            } 
+            }
             else if ((int)infos[2] == 1)
             {
                 skinIndex3 = (int)infos[0];
@@ -1339,14 +1522,14 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
                 player2Avatar.GetComponent<Image>().sprite = player2Skins[skinIndex4];
             }
-        }  
-        else if(eventCode == 101)
+        }
+        else if (eventCode == 101)
         {
             object[] infos = (object[])photonEvent.CustomData;
 
             gameOptions = (string)infos[0];
         }
-        else if(eventCode == 102)
+        else if (eventCode == 102)
         {
             isListedRound = true;
             isConnectedFirst = true;
@@ -1354,7 +1537,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             backEventBtn.SetActive(false);
             StartCoroutine(DelayToLeaveRound());
         }
-        else if(eventCode == 103)
+        else if (eventCode == 103)
         {
             object[] infos = (object[])photonEvent.CustomData;
 
@@ -1364,15 +1547,18 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     #endregion
 
-    #region UIFunctions    
+    #region UIFunctions
+
     public void TutorialBtnClick()
     {
         SceneManager.LoadScene("Tutorial");
     }
+
     public Sprite GetPLayerSkin(int n)
     {
         return player1Skins[n];
     }
+
     public void TournamentCreateBtnClick(string roomname)
     {
         isTournament = false;
@@ -1389,7 +1575,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
             RoomOptions roomOptions = new RoomOptions();
             roomOptions.IsOpen = true;
-            roomOptions.IsVisible = roomname!=""?false: true;
+            roomOptions.IsVisible = roomname != "" ? false : true;
             roomOptions.MaxPlayers = (byte)2;
 
             // disconnect issue
@@ -1462,10 +1648,11 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             PhotonNetwork.NickName = player1Name.text;
         }
     }
+
     public void CreateBtnClick()
     {
         isTournament = false;
-        if(playerNameCreate.text == "")
+        if (playerNameCreate.text == "")
         {
             StartCoroutine(DelayToShowAlert("Please enter the name."));
         }
@@ -1473,6 +1660,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             onlineUI.SetActive(false);
             roomUI.SetActive(true);
+            TournamentRoomPanel.SetActive(false);
             player1Avatar.GetComponent<Image>().sprite = player1Skins[PlayerPrefs.GetInt("SKIN1")];
             //PlayerPrefs.SetString("PLAYER_NAME", playerNameCreate.text);
 
@@ -1491,13 +1679,13 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
             //playerCreateName += playerNameCreate.text + " L" + PlayerPrefs.GetInt("LEVEL");
             playerCreateName += playerNameCreate.text;
-            
-            if(gameOptions.Length >= 1)
+
+            if (gameOptions.Length >= 1)
             {
                 playerCreateName += ", ";
-            } 
+            }
 
-            for(int i = 0; i < gameOptions.Length; i++)
+            for (int i = 0; i < gameOptions.Length; i++)
             {
                 if (i != gameOptions.Length - 1)
                 {
@@ -1542,95 +1730,108 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                     {
                         playerCreateName += "MS";
                     }
-                }                                
+                }
             }
 
             PhotonNetwork.CreateRoom(playerCreateName, roomOptions, TypedLobby.Default);
             player1Name.text = playerCreateName;
             playerNames[0] = player1Name.text;
             PhotonNetwork.NickName = playerCreateName;
-
-
-
-        }                
+        }
     }
-    public void JoinBtnClick( string roomname="")
+
+    public void JoinBtnClick(string roomname = "")
     {
         isTournament = false;
 
-        if(roomname!="")
+        if (roomname != "")
         {
             selectedRoom = roomname;
-            TournamentLobbyCreator.SetIsinTournament( true);
-
-
+            TournamentLobbyCreator.SetIsinTournament(true);
         }
         else
         {
             Debug.Log("join btn click null");
             TournamentLobbyCreator.SetIsinTournament(false);
         }
-        if (TournamentLobbyCreator.Instance!= null)
+
+        if (TournamentLobbyCreator.Instance != null)
         {
             TournamentLobbyCreator.Instance.mymatchroom = "";
         }
-            if (selectedRoom == "")
+
+        if (selectedRoom == "")
+        {
+            StartCoroutine(DelayToShowAlert("Please select the room."));
+        }
+        else if (playerNameCreate.text == "")
+        {
+            StartCoroutine(DelayToShowAlert("Please enter the name."));
+        }
+        else
+        {
+            if (selectedRoom != "Pee Wee (AI)")
             {
-                StartCoroutine(DelayToShowAlert("Please select the room."));
-            }
-            else if (playerNameCreate.text == "")
-            {
-                StartCoroutine(DelayToShowAlert("Please enter the name."));
-            }
-            else
-            {
-                if (selectedRoom != "Pee Wee (AI)")
+                // Ensure NickName is set before joining
+                if (string.IsNullOrEmpty(PhotonNetwork.NickName))
                 {
-                    PhotonNetwork.JoinRoom(selectedRoom);
+                    PhotonNetwork.NickName = playerNameCreate.text;
+                }
+
+                // If not in lobby yet (WebGL sometimes late), join lobby first and retry shortly
+                if (!PhotonNetwork.InLobby && PhotonNetwork.NetworkClientState == ClientState.ConnectedToMaster)
+                {
+                    PhotonNetwork.JoinLobby(TypedLobby.Default);
+                    StartCoroutine(DelayToShowAlert("Syncing lobby… please tap Join again in a second."));
+                    return;
+                }
+
+                PhotonNetwork.JoinRoom(selectedRoom);
                 if (TournamentLobbyCreator.isInTournament())
                 {
-
                     player1Name.text = PlayerPrefs.GetString(Prefs.otherplayername, selectedRoom);
                 }
                 else
                 {
                     player1Name.text = selectedRoom;
                 }
-                
+
                 onlineUI.SetActive(false);
-                    roomUI.SetActive(true);
+                roomUI.SetActive(true);
 
-                    //PhotonNetwork.NickName = playerNameCreate.text + " L" + PlayerPrefs.GetInt("LEVEL");     
-                    PhotonNetwork.NickName = playerNameCreate.text;
+                //PhotonNetwork.NickName = playerNameCreate.text + " L" + PlayerPrefs.GetInt("LEVEL");     
+                PhotonNetwork.NickName = playerNameCreate.text;
 
-                    //player2Name.text = playerNameCreate.text + " L" + PlayerPrefs.GetInt("LEVEL");
-                    player2Name.text = playerNameCreate.text;
-                    playerNames[0] = player1Name.text;
-                    playerNames[1] = player2Name.text;
-                }
-                else
-                {
-                    PlaySoloBtnClick();
-                }
+                //player2Name.text = playerNameCreate.text + " L" + PlayerPrefs.GetInt("LEVEL");
+                player2Name.text = playerNameCreate.text;
+                playerNames[0] = player1Name.text;
+                playerNames[1] = player2Name.text;
             }
-        
+            else
+            {
+                PlaySoloBtnClick();
+            }
+        }
     }
+
     public void JoinTournament()
     {
         SceneManager.LoadScene("TournamentManager");
     }
-    public void JoinBtnClick( bool istournament,string roomname="")
+
+    public void JoinBtnClick(bool istournament, string roomname = "")
     {
         // Debug.LogError("join btn 2  : " + istournament);
         TournamentLobbyCreator.SetIsinTournament(istournament);
 
         TournamentLobbyCreator.SavePlayerName(playerNameCreate.text);
-        
+
         this.isTournament = istournament;
         if (TournamentLobbyCreator.Instance != null)
         {
             TournamentLobbyCreator.Instance.mymatchroom = "";
         }
+
         if (istournament)
         {
             if (roomname == "")
@@ -1643,8 +1844,6 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             }
             else
             {
-          
-
                 RoomOptions roomOptions = new RoomOptions();
                 roomOptions.MaxPlayers = (byte)TournamentLobbyCreator.MaxPlayersInTournament;
                 roomOptions.CleanupCacheOnLeave = false;
@@ -1652,6 +1851,13 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
                 roomOptions.EmptyRoomTtl = 600;
 
                 PhotonNetwork.KeepAliveInBackground = 60000;
+                // Ensure lobby sync before join-or-create for more reliable behavior on WebGL
+                if (!PhotonNetwork.InLobby && PhotonNetwork.NetworkClientState == ClientState.ConnectedToMaster)
+                {
+                    PhotonNetwork.JoinLobby(TypedLobby.Default);
+                    StartCoroutine(DelayToShowAlert("Syncing lobby… please tap Join again in a second."));
+                    return;
+                }
                 PhotonNetwork.JoinOrCreateRoom(roomname, roomOptions, TypedLobby.Default);
                 player1Name.text = selectedRoom;
                 onlineUI.SetActive(false);
@@ -1703,7 +1909,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public void RoomListClick()
     {
-        for(int i = 0; i < roomList.Length; i++)
+        for (int i = 0; i < roomList.Length; i++)
         {
             roomBack[i].color = Color.black;
             roomName[i].color = Color.white;
@@ -1711,30 +1917,27 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
 
         selectedRoom = EventSystem.current.currentSelectedGameObject.GetComponent<Text>().text;
 
-        EventSystem.current.currentSelectedGameObject.GetComponent<Text>().color = Color.red;
-        EventSystem.current.currentSelectedGameObject.GetComponent<Text>().GetComponentInParent<Image>().color = Color.red;
+        EventSystem.current.currentSelectedGameObject.GetComponent<Text>().color = Color.green;
+        EventSystem.current.currentSelectedGameObject.GetComponent<Text>().GetComponentInParent<Image>().color =
+            Color.green;
 
         if (isDoubleClick)
         {
-            if (selectedRoom == "Pee Wee (AI)")
+            if (selectedRoom == "Challenge Pee Wee AI")
             {
                 PlaySoloBtnClick();
             }
             else if (selectedRoom == TournamentLobbyCreator.TournamentRoomName)
             {
                 JoinBtnClick(TournamentLobbyCreator.TournamentRoomName); //not tournament
-
             }
             else
             {
                 JoinBtnClick(); //not tournament
             }
         }
-        
-        
-                 
     }
-    
+
 
     public void LeaveRoomBtnClick()
     {
@@ -1745,14 +1948,14 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         multiStartBtn.SetActive(false);
         logoInRoom.SetActive(true);
         prepareText.SetActive(false);
-        warningText.SetActive(true);
+        warningTextGO.SetActive(true);
 
         StartCoroutine(GetUserInfos(frontURL + "/api/getUserData"));
         //StartCoroutine(GetUserInfos("http://192.168.106.133/api/getUserData"));
 
         PhotonNetwork.LeaveRoom();
         if (!PhotonNetwork.InLobby)
-            PhotonNetwork.JoinLobby(TypedLobby.Default);        
+            PhotonNetwork.JoinLobby(TypedLobby.Default);
     }
 
     public void ClickAvatar()
@@ -1838,145 +2041,159 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         switch (skinIndex)
         {
             case 0:
+            {
+                for (int i = 0; i < skinSprites0.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites0.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites0[i];
-                        skinDetailsTitle.text = "Green Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites0[i];
+                    skinDetailsTitle.text = "Green Army";
                 }
+
+                break;
+            }
             case 1:
+            {
+                for (int i = 0; i < skinSprites1.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites1.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites1[i];
-                        skinDetailsTitle.text = "Sea Aliens";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites1[i];
+                    skinDetailsTitle.text = "Sea Aliens";
                 }
+
+                break;
+            }
             case 2:
+            {
+                for (int i = 0; i < skinSprites2.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites2.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites2[i];
-                        skinDetailsTitle.text = "Golden Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites2[i];
+                    skinDetailsTitle.text = "Golden Army";
                 }
+
+                break;
+            }
             case 3:
+            {
+                for (int i = 0; i < skinSprites3.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites3.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites3[i];
-                        skinDetailsTitle.text = "Centaur Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites3[i];
+                    skinDetailsTitle.text = "Centaur Army";
                 }
+
+                break;
+            }
             case 4:
+            {
+                for (int i = 0; i < skinSprites4.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites4.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites4[i];
-                        skinDetailsTitle.text = "Viking Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites4[i];
+                    skinDetailsTitle.text = "Viking Army";
                 }
+
+                break;
+            }
             case 5:
+            {
+                for (int i = 0; i < skinSprites5.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites5.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites5[i];
-                        skinDetailsTitle.text = "Strawberry Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites5[i];
+                    skinDetailsTitle.text = "Strawberry Army";
                 }
+
+                break;
+            }
             case 6:
+            {
+                for (int i = 0; i < skinSprites6.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites6.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites6[i];
-                        skinDetailsTitle.text = "Fire Engine";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites6[i];
+                    skinDetailsTitle.text = "Fire Engine";
                 }
+
+                break;
+            }
             case 7:
+            {
+                for (int i = 0; i < skinSprites7.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites7.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites7[i];
-                        skinDetailsTitle.text = "Vegas Aliens";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites7[i];
+                    skinDetailsTitle.text = "Vegas Aliens";
                 }
+
+                break;
+            }
             case 8:
+            {
+                for (int i = 0; i < skinSprites8.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites8.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites8[i];
-                        skinDetailsTitle.text = "Water Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites8[i];
+                    skinDetailsTitle.text = "Water Army";
                 }
+
+                break;
+            }
             case 9:
+            {
+                for (int i = 0; i < skinSprites9.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites9.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites9[i];
-                        skinDetailsTitle.text = "Future Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites9[i];
+                    skinDetailsTitle.text = "Future Army";
                 }
+
+                break;
+            }
             case 10:
+            {
+                for (int i = 0; i < skinSprites10.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites10.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites10[i];
-                        skinDetailsTitle.text = "Minotaur Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites10[i];
+                    skinDetailsTitle.text = "Minotaur Army";
                 }
+
+                break;
+            }
             case 11:
+            {
+                for (int i = 0; i < skinSprites11.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites11.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites11[i];
-                        skinDetailsTitle.text = "Peace Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites11[i];
+                    skinDetailsTitle.text = "Peace Army";
                 }
+
+                break;
+            }
             case 13:
+            {
+                for (int i = 0; i < skinSprites12.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites12.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites12[i];
-                        skinDetailsTitle.text = "Patriot Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites12[i];
+                    skinDetailsTitle.text = "Patriot Army";
                 }
+
+                break;
+            }
             case 14:
+            {
+                for (int i = 0; i < skinSprites13.Length; i++)
                 {
-                    for (int i = 0; i < skinSprites13.Length; i++)
-                    {
-                        skinDetails[i].gameObject.SetActive(true);
-                        skinDetails[i].sprite = skinSprites13[i];
-                        skinDetailsTitle.text = "Swashbuckler Army";
-                    }
-                    break;
+                    skinDetails[i].gameObject.SetActive(true);
+                    skinDetails[i].sprite = skinSprites13[i];
+                    skinDetailsTitle.text = "Swashbuckler Army";
                 }
+
+                break;
+            }
         }
     }
 
@@ -2019,14 +2236,16 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             gameOptions += "@";
             gameOptionsImage.sprite = optionsSprite[0];
-            selectedOptions = "1" + selectedOptions[1].ToString() + selectedOptions[2].ToString() + selectedOptions[3].ToString();
+            selectedOptions = "1" + selectedOptions[1].ToString() + selectedOptions[2].ToString() +
+                              selectedOptions[3].ToString();
         }
 
         if (optionsSelect[1].isOn)
         {
             gameOptions += "^";
             gameOptionsImage.sprite = optionsSprite[1];
-            selectedOptions = selectedOptions[0].ToString() + "1" + selectedOptions[2].ToString() + selectedOptions[3].ToString();
+            selectedOptions = selectedOptions[0].ToString() + "1" + selectedOptions[2].ToString() +
+                              selectedOptions[3].ToString();
             //print(selectedOptions);
         }
 
@@ -2034,7 +2253,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             gameOptions += "*";
             gameOptionsImage.sprite = optionsSprite[2];
-            selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() + "1" + selectedOptions[3].ToString();
+            selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() + "1" +
+                              selectedOptions[3].ToString();
             //print(selectedOptions);
         }
 
@@ -2042,7 +2262,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             gameOptions += "&";
             gameOptionsImage.sprite = optionsSprite[3];
-            selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() + selectedOptions[2].ToString() + "1";
+            selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() +
+                              selectedOptions[2].ToString() + "1";
             //print(selectedOptions);
         }
 
@@ -2056,7 +2277,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             onlineOptoinsText.text = AddGameoptionsInfo();
         }
 
-        PlayerPrefs.SetString("GAME_OPTION", gameOptions);        
+        PlayerPrefs.SetString("GAME_OPTION", gameOptions);
         StartCoroutine(UpdateOptionSelection(frontURL + "/api/updateOptionSelection", selectedOptions));
     }
 
@@ -2095,6 +2316,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             gameOptionsDetailImage.sprite = optionsSprite[3];
         }
     }
+
     public string AddGameoptionsInfo()
     {
         string tempOptoinsInfo = "";
@@ -2175,7 +2397,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     }
 
     public void StartMultiplayer()
-    {                
+    {
         PhotonNetwork.CurrentRoom.IsVisible = false;
         SceneManager.LoadScene("Multi");
     }
@@ -2195,8 +2417,8 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     public int CalculateCurrentRound(string timeNow, string dayNow)
     {
         int tempRound = 0;
-        startingTime = 0;     
-        
+        startingTime = 0;
+
         eventParameter.hour = int.Parse(timeNow.Split(':')[0]);
         eventParameter.minute = int.Parse(timeNow.Split(':')[1]);
         eventParameter.second = int.Parse(timeNow.Split(':')[2]);
@@ -2207,20 +2429,20 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             roundIndices = 8;
             startingTime = (300 - eventParameter.minute * 60 - eventParameter.second);
         }
-        else if(eventParameter.hour == 19 && (eventParameter.minute >= 50 && eventParameter.minute < 55))
+        else if (eventParameter.hour == 19 && (eventParameter.minute >= 50 && eventParameter.minute < 55))
         {
             tempRound = 2;
             roundIndices = 4;
             startingTime = (300 - (eventParameter.minute - 50) * 60 - eventParameter.second);
         }
-        else if(eventParameter.hour == 20 && (eventParameter.minute >= 40 && eventParameter.minute < 45))
+        else if (eventParameter.hour == 20 && (eventParameter.minute >= 40 && eventParameter.minute < 45))
         {
             tempRound = 3;
             roundIndices = 2;
             startingTime = (300 - (eventParameter.minute - 40) * 60 - eventParameter.second);
         }
 
-        if((eventParameter.hour == 19 || eventParameter.hour == 20) && string.Equals(dayNow, "Friday"))
+        if ((eventParameter.hour == 19 || eventParameter.hour == 20) && string.Equals(dayNow, "Friday"))
         {
             isEventTime = true;
         }
@@ -2228,7 +2450,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         {
             isEventTime = false;
         }
-  
+
         isTimeRefreshed = true;
         return tempRound;
     }
@@ -2319,7 +2541,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         Debug.Log("Get user Infos Called");
         WWWForm form = new WWWForm();
-        form.AddField("user_id", PlayerPrefs.GetInt("USER_ID"));       
+        form.AddField("user_id", PlayerPrefs.GetInt("USER_ID"));
 
         UnityWebRequest uwr = UnityWebRequest.Post(url, form);
 
@@ -2332,7 +2554,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         else
         {
             Debug.Log("Received: " + uwr.downloadHandler.text);
-            UserInfo loadData = JsonUtility.FromJson<UserInfo>(uwr.downloadHandler.text);            
+            UserInfo loadData = JsonUtility.FromJson<UserInfo>(uwr.downloadHandler.text);
 
             playerNameCreate.text = loadData.username;
             PlayerPrefs.SetString("PLAYER_NAME", loadData.username);
@@ -2345,25 +2567,25 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             playingCount.text = loadData.playingCounter.ToString();
             eventParameter.round = loadData.round;
             eventParameter.day = loadData.day;
-            eventParameter.eventRound = CalculateCurrentRound(loadData.time, loadData.day);            
+            eventParameter.eventRound = CalculateCurrentRound(loadData.time, loadData.day);
 
             if (loadData.skin1 == 0)
             {
                 PlayerPrefs.SetInt("SKIN1", 12);
             }
 
-            if(loadData.skin2 == 0)
+            if (loadData.skin2 == 0)
             {
                 PlayerPrefs.SetInt("SKIN2", 12);
             }
 
             if (PlayerPrefs.GetInt("SKIN1") == 12)
-            {         
+            {
                 PlayerPrefs.SetInt("SKIN1", PlayerPrefs.GetInt("SKIN2"));
             }
 
             if (PlayerPrefs.GetInt("SKIN2") == 12)
-            { 
+            {
                 PlayerPrefs.SetInt("SKIN2", PlayerPrefs.GetInt("SKIN1"));
             }
 
@@ -2373,25 +2595,29 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
             if (loadData.options[0] == '1')
             {
                 gameOptions += "@";
-                selectedOptions = "1" + selectedOptions[1].ToString() + selectedOptions[2].ToString() + selectedOptions[3].ToString();             
+                selectedOptions = "1" + selectedOptions[1].ToString() + selectedOptions[2].ToString() +
+                                  selectedOptions[3].ToString();
             }
-            
+
             if (loadData.options[1] == '1')
             {
                 gameOptions += "^";
-                selectedOptions = selectedOptions[0].ToString() + "1" + selectedOptions[2].ToString() + selectedOptions[3].ToString();
+                selectedOptions = selectedOptions[0].ToString() + "1" + selectedOptions[2].ToString() +
+                                  selectedOptions[3].ToString();
             }
-            
+
             if (loadData.options[2] == '1')
             {
                 gameOptions += "*";
-                selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() + "1" + selectedOptions[3].ToString();
+                selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() + "1" +
+                                  selectedOptions[3].ToString();
             }
 
             if (loadData.options[3] == '1')
             {
                 gameOptions += "&";
-                selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() + selectedOptions[2].ToString() + "1";
+                selectedOptions = selectedOptions[0].ToString() + selectedOptions[1].ToString() +
+                                  selectedOptions[2].ToString() + "1";
             }
 
             PlayerPrefs.SetString("GAME_OPTION", gameOptions);
@@ -2425,7 +2651,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
         }
         else
         {
-            Debug.Log("Received: " + uwr.downloadHandler.text);                                    
+            Debug.Log("Received: " + uwr.downloadHandler.text);
         }
     }
 
@@ -2433,7 +2659,7 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         WWWForm form = new WWWForm();
         form.AddField("userid", PlayerPrefs.GetInt("USER_ID"));
-        form.AddField("optionids", optionsStr);      
+        form.AddField("optionids", optionsStr);
 
         UnityWebRequest uwr = UnityWebRequest.Post(url, form);
 
@@ -2452,24 +2678,20 @@ public class MainUI : MonoBehaviourPunCallbacks, IOnEventCallback
     #endregion
 
 
-
-
-
-
     public List<customButtonLobby> btns;
 
 
     public void selectButton(customButtonLobby btn)
     {
-
         foreach (var item in btns)
         {
-            if(item!=btn)
-            item.SetSelected(false);
+            if (item != btn)
+                item.SetSelected(false);
         }
 
         btn.SetSelected(true);
     }
+
     public void selectButtonInit()
     {
         for (int i = 0; i < btns.Count; i++)

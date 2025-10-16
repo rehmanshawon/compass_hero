@@ -25,7 +25,7 @@ public class IAPHandler : MonoBehaviour
             Debug.Log("User ID Found");
             WWWForm form = new WWWForm();
             form.AddField("user_id", PlayerPrefs.GetInt("USER_ID"));
-            UnityWebRequest request = UnityWebRequest.Post("https://subgrids.com/api/getUserSetting", form);
+            UnityWebRequest request = UnityWebRequest.Post("https://compasshero.com/api/getUserSetting", form);
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.ConnectionError)

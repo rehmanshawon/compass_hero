@@ -11,17 +11,6 @@ public class TournamanetSlot : MonoBehaviour
     public TextMeshProUGUI txt_name;
     public Image mySp;
     public string myid;
-   
-   
-    // Start is called before the first frame update
-    void Start()
-    {
-
-   
-
-        
-        
-    }
     public void loadoldids()
     {
         string oldname = PlayerPrefs.GetString(myid + "oldname", "---");
@@ -52,10 +41,5 @@ public class TournamanetSlot : MonoBehaviour
     public void clearsp()
     {
         mySp.gameObject.SetActive(false);
-    }
-    // Update is called once per frame
-    void Update()
-    {
-        
     }
 }

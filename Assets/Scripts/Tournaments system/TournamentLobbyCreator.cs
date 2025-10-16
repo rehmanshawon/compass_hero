@@ -1,42 +1,69 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using ExitGames.Client.Photon;
 using Photon.Pun;
 using Photon.Realtime;
 using TMPro;
-using UnityEditor.Experimental;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Hashtable = ExitGames.Client.Photon.Hashtable;
+using Random = UnityEngine.Random;
 
 public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
 {
     public static bool wasInTournament;
     public static TournamentLobbyCreator Instance;
     public MainUI ui;
+    public bool IsPaidUser;
+    public bool checkPSTTime = false;
+    public bool checkLocalTime = false;
+    public bool IfCheckForTime;
+    public List<string> Round2List;
+    public List<string> Round3List;
+    public GameObject startButton;
+
+    public bool CheckForData;
+    public float timer;
+    public ApiDataManagement api;
+
     [Header("UI Elements")] public GameObject tournamentPanel;
     public GameObject normalPanel;
     public TextMeshProUGUI playerListText;
     public Button startTournamentButton;
     public TimeCounterOfRoom counter;
     public const string TournamentRoomName = "Tournament_Lobby";
-    public const int MaxPlayersInTournament = 8;
-    private bool isTournamentOwner = false;
+    public const int MaxPlayersInTournament = 20;
+    public bool isTournamentOwner = false;
     public GameObject tournamentLoadingScreen;
 
-    private List<string> tournamentPlayers = new List<string>();
+    public int RoundCount;
+
+    public bool checkForPlayersConditionCount;
+
+    public bool WasRecentlyInTournament;
+
+    public int playersToGO;
+
+    public List<string> tournamentPlayers = new List<string>();
+    public List<string> TempList = new List<string>();
 
     public TournamentsMatchSlots matchSlots;
 
+    // Initialize without touching Photon in field initializers to avoid Resources.Load during construction
+    public List<Player> cachedPlayers = new List<Player>();
 
     bool connectedtomasted = false;
 
     private void Awake()
     {
         if (Instance == null)
+        {
             Instance = this;
+        }
+
         else
             Destroy(gameObject);
     }
@@ -50,11 +77,6 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
     {
         PlayerPrefs.SetInt(Prefs.TournamentRoundCount, val);
         PlayerPrefs.Save();
-    }
-
-    public static int getroundCount()
-    {
-        return PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
     }
 
     public static void SavePlayerName(string str)
@@ -82,27 +104,111 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
         return wasInTournament;
     }
 
+    public bool WasInTournament()
+    {
+        WasRecentlyInTournament = PlayerPrefs.GetInt(Prefs.WasrecentlyInTournamanet, 0) != 0;
+
+        return WasRecentlyInTournament;
+    }
+
+    public List<string> loadedNames;
+
     private void Start()
     {
+        // Populate cachedPlayers safely after MonoBehaviour has started
+        try
+        {
+            var list = PhotonNetwork.PlayerList;
+            cachedPlayers = list != null ? list.ToList() : new List<Player>();
+        }
+        catch
+        {
+            cachedPlayers = new List<Player>();
+        }
+
         if (isInTournament())
         {
-            int roundcount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
-            roundcount++;
-            PlayerPrefs.SetInt(Prefs.TournamentRoundCount, roundcount);
-            PlayerPrefs.Save();
+            RoundCount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
 
+            loadedNames = LoadList("R1"); // Make sure the key matches what was saved
+            TempList.AddRange(loadedNames);
 
-            Debug.Log("ROundCount : " + roundcount);
-
-            if (roundcount >= 3) // REWARD PLAYER FOR WINNING TOURNAMENT
+            if (RoundCount >= 3) // REWARD PLAYER FOR WINNING TOURNAMENT
             {
                 ui.WonTournament();
+                FireBaseDataManager.Instance.GetComponent<ApiDataManagement>().SendApiData();
+                RoundCount = 0;
+                PlayerPrefs.SetInt(Prefs.TournamentRoundCount, RoundCount);
+                PlayerPrefs.Save();
+
+
+                Debug.Log("Round Count on win: " + RoundCount);
+                Debug.Log("Api Data Sent");
             }
         }
     }
+    // private void OnToggleValueChangedToggle(bool isOn)
+    // {
+    //     checkPSTTime = isOn;
+    //     IfCheckForTime = isOn;
+    //     checkLocalTime = !isOn;
+    // }
 
-    public void fillAiRooms()
+    void PopulateManualMatchSlots()
     {
+        if (RoundCount == 1)
+        {
+            for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.Round0List.Count; i++)
+            {
+                matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.Round0List[i].playerName, i, 0,
+                    0);
+            }
+
+            Debug.Log("Slots are assigned: " + RoundCount);
+        }
+        else if (RoundCount == 2)
+        {
+            for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.Round1List.Count; i++)
+            {
+                matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.Round0List[i].playerName, i, 0,
+                    1);
+            }
+
+            for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.Round0List.Count; i++)
+            {
+                matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.Round0List[i].playerName, i, 0,
+                    0);
+            }
+
+            Debug.Log("Slots are assigned: " + RoundCount);
+        }
+        else if (RoundCount == 2)
+        {
+            for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.Round2List.Count; i++)
+            {
+                matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.Round2List[i].playerName, i, 0,
+                    2);
+            }
+
+            for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.Round1List.Count; i++)
+            {
+                matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.Round0List[i].playerName, i, 0,
+                    1);
+            }
+
+            for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.Round0List.Count; i++)
+            {
+                matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.Round0List[i].playerName, i, 0,
+                    0);
+            }
+
+            Debug.Log("Slots are assigned: " + RoundCount);
+        }
+    }
+
+    private void OnToggleValueChanged(bool value)
+    {
+        IsPaidUser = value;
     }
 
     public override void OnConnectedToMaster()
@@ -114,20 +220,44 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
     {
         base.OnCreatedRoom();
 
+        if (PhotonNetwork.CurrentRoom.PlayerCount == 1)
+        {
+            Debug.Log("You are the first player in the tournament room");
+
+            isTournamentOwner = true;
+            RoundCount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
+
+            if (IsPaidUser && isTournamentOwner && RoundCount == 0)
+            {
+                Debug.Log("You are a paid user and can start the tournament");
+                startButton.SetActive(true);
+            }
+        }
+        else
+        {
+            Debug.Log("Another player is already in the room. Disabling start button");
+            startButton.SetActive(false);
+        }
+
         Debug.Log("room createdd");
+
+        Debug.Log("Owner: " + isTournamentOwner);
     }
 
-    public override void OnRoomListUpdate(List<RoomInfo> roomList)
+    public override void OnLeftRoom()
     {
-        base.OnRoomListUpdate(roomList);
-        Debug.Log("room list updated tournament lobby" + roomList.Count);
+        Debug.Log("Room is Left");
+        int totalRooms = PhotonNetwork.CountOfRooms;
+        Debug.Log("TotalRooms: " + totalRooms);
 
-        if (roomList.Find(x => x.Name.Equals(mymatchroom)) != null)
-            if (!canmakeroom)
-            {
-                Debug.Log("room found and joining");
-                ui.JoinBtnClick(mymatchroom);
-            }
+        for (int i = 0; i < tournamentPlayers.Count; i++)
+        {
+            tournamentPlayers.Remove(i.ToString());
+        }
+
+        CheckForData = false;
+        timer = 0f;
+        RemovePlayerFromFirebaseList();
     }
 
     [PunRPC]
@@ -157,21 +287,28 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
                         return;
                     }
 
-
                     bool available = ui.rooms.Any(x => x.Name.Equals(mymatchroom));
 
-                    Debug.Log("room found : " + available + "         Lobby name : " + PhotonNetwork.CurrentLobby.Name);
+                    Debug.Log("room found : " + available + "Lobby name : " + PhotonNetwork.CurrentLobby.Name);
 
                     if (!isAiPLayingTournament)
                     {
                         ui.JoinBtnClick(mymatchroom);
                     }
-                    else
-                    {
-                    }
                 }
 
                 matchroomset = true;
+            }
+        }
+
+        if (CheckForData)
+        {
+            timer += Time.deltaTime;
+            if (timer >= 2.5f || Input.GetKeyDown(KeyCode.Alpha2))
+            {
+                timer = 0f;
+                AddNewPlayerAndUpdateData();
+                // PopulateManualMatchSlots();
             }
         }
     }
@@ -193,6 +330,29 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
         Debug.Log("Joined tournament Lobby name : " + PhotonNetwork.CurrentLobby.Name);
     }
 
+    public override void OnRoomListUpdate(List<RoomInfo> roomList)
+    {
+        base.OnRoomListUpdate(roomList);
+        Debug.Log("room list updated tournament lobby" + roomList.Count);
+
+        int roomCount = Mathf.Min(roomList.Count, ui.roomList.Length);
+        for (int i = 0; i < roomCount; i++)
+        {
+            ui.roomList[i].SetActive(true);
+
+            string roomName = roomList[i].Name;
+            int index = i;
+        }
+
+
+        if (roomList.Find(x => x.Name.Equals(mymatchroom)) != null)
+            if (!canmakeroom)
+            {
+                Debug.Log("room found and joining");
+                ui.JoinBtnClick(mymatchroom);
+            }
+    }
+
     [PunRPC]
     public void JoinMatchNow()
     {
@@ -201,56 +361,69 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
 
     public override void OnJoinedRoom()
     {
-        Debug.Log($"Joined tournament Room: {PhotonNetwork.CurrentRoom.Name}");
+        if (!WasInTournament() && RoundCount == 0 && PhotonNetwork.CurrentRoom.PlayerCount <= playersToGO)
+        {
+            Debug.Log("Wasn't in tournament: " + WasInTournament());
+
+            AddAllPlayersToFirebaseList();
+
+            Debug.Log("Is in the tournament now?? : " + WasInTournament());
+        }
+        else if (WasInTournament() && PhotonNetwork.CurrentRoom.PlayerCount <= playersToGO &&
+                 (RoundCount == 1 || RoundCount == 2))
+        {
+            AddAllPlayersToFirebaseList();
+        }
+        else
+        {
+            AddAllPlayersToFirebaseList();
+        }
+
         if (ui.isTournament)
         {
+            Debug.Log("You are in a tournament mode");
+
             if (mymatchroom != "")
             {
+                Debug.Log($"Match room name found: {mymatchroom}");
+
                 if (PhotonNetwork.CurrentRoom.PlayerCount == 2)
                 {
+                    Debug.Log("Room is full. Locking and starting match...");
+
                     PhotonNetwork.CurrentRoom.IsOpen = false;
                     PhotonNetwork.CurrentRoom.IsVisible = false;
-                    //MainUI.playerNames[0] = PhotonNetwork.NickName;
-                    // MainUI.playerNames[1] = newPlayer.NickName;
-                    ui.isMatched = true;
-                    Debug.Log("joining game");
 
+                    ui.isMatched = true;
+                    Debug.Log("Sending JoinMatchNow RPC to all clients");
 
                     photonView.RPC("JoinMatchNow", RpcTarget.All);
                 }
                 else
                 {
-                    Debug.Log("waiting for other player");
+                    Debug.Log("Waiting for another player to join the match room...");
                 }
             }
             else
             {
+                Debug.Log("This is the main tournament room");
+
                 if (PhotonNetwork.CurrentRoom.Name == TournamentRoomName)
                 {
                     tournamentPanel.SetActive(true);
                     normalPanel.SetActive(false);
-                    if (PhotonNetwork.CurrentRoom.PlayerCount == 1)
-                    {
-                        isTournamentOwner = true;
-                        // startTournamentButton.gameObject.SetActive(true);
-                    }
-                    else
-                    {
-                        startTournamentButton.gameObject.SetActive(false);
-                    }
+                    Debug.Log("Syncing tournament skins...");
 
                     photonView.RPC("SyncTournamentsSkins", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber,
                         PlayerPrefs.GetInt("SKIN1"));
-                    //Hashtable properties = new Hashtable
-                    //{
-                    //    { $"Skin{PhotonNetwork.LocalPlayer.ActorNumber}", PlayerPrefs.GetInt("SKIN1",0) } // Store the integer with a key
-                    //};
-                    //  PhotonNetwork.LocalPlayer.SetCustomProperties(properties);
-                    //  PhotonNetwork.CurrentRoom.SetCustomProperties(properties);
+
+                    Debug.Log("Updating tournament player list");
+
                     UpdateTournamentPlayerList();
                 }
                 else
                 {
+                    Debug.Log("Not the main tournament room — showing normal panel");
                     tournamentPanel.SetActive(false);
                     normalPanel.SetActive(true);
                 }
@@ -258,8 +431,11 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
         }
         else
         {
+            Debug.Log("You are not in a tournament");
+
             if (isInTournament())
             {
+                Debug.Log("You were in a tournament before — syncing skins");
                 photonView.RPC("SyncTournamentsSkins", RpcTarget.All, PhotonNetwork.LocalPlayer.ActorNumber,
                     PlayerPrefs.GetInt("SKIN1"));
             }
@@ -267,6 +443,420 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
             tournamentPanel.SetActive(false);
             normalPanel.SetActive(true);
         }
+
+        Debug.Log("Is in the tournament: " + isInTournament());
+    }
+
+    [ContextMenu("Add the player to list")]
+    public void AddAllPlayersToFirebaseList()
+    {
+        var allPlayers = PhotonNetwork.PlayerList;
+
+        FireBaseDataManager.Instance.playersRoomData.Clear();
+
+        for (int i = 0; i < allPlayers.Length; i++)
+        {
+            PlayerDataInfo playerDataInfo = new PlayerDataInfo()
+            {
+                playerName = allPlayers[i].NickName,
+                PlayerIndexInList = i,
+            };
+
+            FireBaseDataManager.Instance.playersRoomData.Add(playerDataInfo);
+        }
+
+        CheckForData = true;
+
+        if (RoundCount == 0)
+        {
+            if (api.WorkingIDs != null && api.WorkingIDs.Count > 0)
+            {
+                api.ID = api.WorkingIDs[Random.Range(0, api.WorkingIDs.Count)];
+            }
+            else
+            {
+                Debug.LogWarning("WorkingIDs list is empty!");
+            }
+
+            PlayerPrefs.SetString(Prefs.PlayerID, api.ID);
+            PlayerPrefs.Save();
+        }
+
+        FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+    }
+
+    [PunRPC]
+    public void RemovePlayerFromFirebaseList()
+    {
+        FireBaseDataManager.Instance.DataLoader.LoadDataFromFirebase();
+
+        Debug.Log("Data is loaded from firebase in removal");
+
+        var playerToRemove = FireBaseDataManager.Instance.DataLoader.playersRoomData.Find(player =>
+            player.playerName == PhotonNetwork.LocalPlayer.NickName);
+
+        Debug.Log("Player to remove is set");
+
+        FireBaseDataManager.Instance.playersRoomData = FireBaseDataManager.Instance.DataLoader.playersRoomData;
+        Debug.Log("New list is assigned");
+
+        if (playerToRemove != null)
+        {
+            FireBaseDataManager.Instance.playersRoomData.Remove(playerToRemove);
+            Debug.Log("Player is removed");
+            matchSlots.clearslots();
+            FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+
+            FireBaseDataManager.Instance.playersRoomData.Clear();
+            FireBaseDataManager.Instance.DataLoader.playersRoomData.Clear();
+
+            CheckForData = false;
+
+            Debug.Log("New data is send on removal and Coroutine stopped");
+        }
+        else
+        {
+            Debug.LogWarning("No matching player found to remove.");
+        }
+    }
+
+    // [PunRPC]
+    // public void AddAiplayer(int pos, string ainame)
+    // {
+    //     matchSlots.PopulateSlotManual(ainame, pos, -1, RoundCount);
+    // }
+
+    [PunRPC]
+    private void StartTournamentRPC()
+    {
+        Debug.Log("Tournament started! Assigning players to matches.");
+
+        try
+        {
+            AssignPlayersToMatches(); // This should run on ALL clients
+            Debug.Log("AssignPlayersToMatches() completed successfully.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error in AssignPlayersToMatches(): {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    [ContextMenu("StartTournamentNow")]
+    public void StartTournamentNow()
+    {
+        Debug.Log("StartTournamentNow called.");
+
+        try
+        {
+            fillRemainingPlayers();
+            Debug.Log("Filled remaining players. Waiting before starting tournament...");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error in fillRemainingPlayers(): {ex.Message}\n{ex.StackTrace}");
+        }
+
+        Invoke(nameof(DelayedStartTournament), 7f);
+    }
+
+    private void DelayedStartTournament()
+    {
+        Debug.Log("DelayedStartTournament invoked.");
+
+        CheckForData = false;
+        timer = 0f;
+
+        try
+        {
+            StartTournament(); // Owner-only logic
+            Debug.Log("StartTournament called successfully.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Error in StartTournament(): {ex.Message}\n{ex.StackTrace}");
+        }
+
+        try
+        {
+            photonView.RPC(nameof(StartTournamentRPC), RpcTarget.All);
+            Debug.Log("StartTournamentRPC sent to all clients.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"RPC call failed: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    [ContextMenu("StartTournament")]
+    public void StartTournament()
+    {
+        Debug.Log("StartTournament called");
+
+        if (!isTournamentOwner)
+        {
+            Debug.LogWarning("Not the tournament owner.");
+            return;
+        }
+
+        int playerCount = PhotonNetwork.CurrentRoom.PlayerCount;
+        Debug.Log($"Current player count: {playerCount}");
+
+        if (playerCount >= 1)
+        {
+            Debug.Log("Starting tournament with " + playerCount + " players");
+
+            // Already filled
+            PhotonNetwork.CurrentRoom.IsVisible = false;
+            PhotonNetwork.CurrentRoom.IsOpen = false;
+        }
+        else
+        {
+            Debug.LogWarning("Not enough players to start tournament.");
+        }
+    }
+
+
+    public void SetRound()
+    {
+        RoundCount++;
+        PlayerPrefs.SetInt(Prefs.TournamentRoundCount, RoundCount);
+        PlayerPrefs.Save();
+
+        WasRecentlyInTournament = true;
+        PlayerPrefs.SetInt(Prefs.WasrecentlyInTournamanet, 1);
+        PlayerPrefs.Save();
+    }
+
+    void SetRoundsData()
+    {
+        List<PlayerDataInfo> clonedList =
+            FireBaseDataManager.Instance.ClonePlayerDataList(FireBaseDataManager.Instance.playersRoomData);
+
+        switch (RoundCount)
+        {
+            case 0:
+                FireBaseDataManager.Instance.Round0List = clonedList;
+                FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+                Debug.Log("Round 0 was created.");
+                break;
+            case 1:
+                FireBaseDataManager.Instance.Round1List = clonedList;
+                FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+                Debug.Log("Round 1 was created.");
+                break;
+            case 2:
+                FireBaseDataManager.Instance.Round2List = clonedList;
+                FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+                Debug.Log("Round 2 was created.");
+                break;
+            default:
+                Debug.Log("Not enough players to start tournament.");
+                break;
+        }
+    }
+
+    bool hasRoomFilled = false;
+
+    public List<string> namelist = new List<string>();
+
+    [ContextMenu("FillPlayers")]
+    public void fillRemainingPlayers()
+    {
+        RoundCount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
+        namelist.Clear();
+        Round2List = new List<string>();
+        Round3List = new List<string>();
+
+        int roundVal = 8;
+
+        switch (RoundCount)
+        {
+            case 0:
+                roundVal = 8;
+                break;
+
+            case 1:
+                roundVal = 4;
+                break;
+
+            case 2:
+                roundVal = 2;
+                break;
+            default:
+                roundVal = 1;
+                break;
+        }
+
+        Debug.Log("Round Count value in ai setup: " + RoundCount + " / Round Val " + roundVal);
+
+        if (isTournamentOwner)
+        {
+            switch (RoundCount)
+            {
+                case 0:
+                    FillRound0(roundVal);
+                    break;
+                case 1:
+                    FillRound1(roundVal);
+                    break;
+                case 2:
+                    FillRound2(roundVal);
+                    break;
+            }
+        }
+    }
+
+// ---------------------- ROUND METHODS ----------------------
+
+    void FillRound0(int roundVal)
+    {
+        Debug.Log("Before FillRound0 - player count: " + FireBaseDataManager.Instance.playersRoomData.Count);
+        Debug.Log("After FillRound0 - player count: " + FireBaseDataManager.Instance.playersRoomData.Count);
+
+        List<PlayerDataInfo> tempList = new List<PlayerDataInfo>();
+
+        foreach (PlayerDataInfo player in FireBaseDataManager.Instance.DataLoader.playersRoomData)
+        {
+            tempList.Add(player);
+        }
+
+        FireBaseDataManager.Instance.playersRoomData = tempList;
+        FireBaseDataManager.Instance.DataLoader.playersRoomData.Clear();
+
+        int existingCount = FireBaseDataManager.Instance.playersRoomData.Count;
+        Debug.Log("Player list count: " + FireBaseDataManager.Instance.playersRoomData.Count);
+        int aiCountNeeded = roundVal - existingCount;
+
+        for (int i = 0; i < aiCountNeeded; i++)
+        {
+            string aiName = GetRandomName();
+            FireBaseDataManager.Instance.AllAiPlayers.Add(new PlayerDataInfo { playerName = aiName });
+            FireBaseDataManager.Instance.playersRoomData.Add(new PlayerDataInfo { playerName = aiName });
+        }
+
+        PlayerPrefs.SetString(Prefs.AiPref, FireBaseDataManager.Instance.AllAiPlayers[0].playerName);
+        PlayerPrefs.Save();
+        FireBaseDataManager.Instance.AllAiPlayers.RemoveAt(0);
+
+
+        int halfCount = FireBaseDataManager.Instance.AllAiPlayers.Count / 2;
+
+        for (int i = 0; i < halfCount; i++)
+        {
+            int removeIndex = Random.Range(0, FireBaseDataManager.Instance.AllAiPlayers.Count);
+            FireBaseDataManager.Instance.AllAiPlayers.RemoveAt(removeIndex);
+        }
+
+        Debug.Log(
+            $"[FillRound0] Players before: {existingCount}, AI added: {aiCountNeeded}, Total: {FireBaseDataManager.Instance.playersRoomData.Count}");
+
+        Debug.Log("Setted Round count: " + RoundCount);
+
+        FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+    }
+
+    void FillRound1(int roundVal)
+    {
+        Debug.Log("This is Round1 Method");
+
+        foreach (PlayerDataInfo player in FireBaseDataManager.Instance.DataLoader.AllAiPlayers)
+        {
+            FireBaseDataManager.Instance.playersRoomData.Add(player);
+        }
+
+        int existingCount = FireBaseDataManager.Instance.playersRoomData.Count;
+        int aiCountNeeded = roundVal - existingCount;
+
+        for (int i = 0; i < aiCountNeeded; i++)
+        {
+            string aiName = FireBaseDataManager.Instance.DataLoader.AllAiPlayers[i].playerName;
+            FireBaseDataManager.Instance.AllAiPlayers.Add(new PlayerDataInfo { playerName = aiName });
+            FireBaseDataManager.Instance.playersRoomData.Add(new PlayerDataInfo { playerName = aiName });
+        }
+
+
+        PlayerPrefs.SetString(Prefs.AiPref, FireBaseDataManager.Instance.AllAiPlayers[0].playerName);
+        PlayerPrefs.Save();
+        FireBaseDataManager.Instance.AllAiPlayers.RemoveAt(0);
+
+        int halfCount = FireBaseDataManager.Instance.AllAiPlayers.Count / 2;
+
+        for (int i = 0; i < halfCount; i++)
+        {
+            int removeIndex = Random.Range(0, FireBaseDataManager.Instance.AllAiPlayers.Count);
+
+            FireBaseDataManager.Instance.AllAiPlayers.RemoveAt(removeIndex);
+        }
+
+        Debug.Log(
+            $"[FillRound0] Players before: {existingCount}, AI added: {aiCountNeeded}, Total: {FireBaseDataManager.Instance.playersRoomData.Count}");
+
+
+        FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+    }
+
+
+    void FillRound2(int roundVal)
+    {
+        Debug.Log("This is Round1 Method");
+
+        foreach (PlayerDataInfo player in FireBaseDataManager.Instance.DataLoader.AllAiPlayers)
+        {
+            FireBaseDataManager.Instance.playersRoomData.Add(player);
+        }
+
+        PlayerPrefs.SetString(Prefs.AiPref, FireBaseDataManager.Instance.AllAiPlayers[0].playerName);
+        PlayerPrefs.Save();
+
+        int existingCount = FireBaseDataManager.Instance.playersRoomData.Count;
+        int aiCountNeeded = roundVal - existingCount;
+
+        for (int i = 0; i < aiCountNeeded; i++)
+        {
+            string aiName = FireBaseDataManager.Instance.DataLoader.AllAiPlayers[i].playerName;
+            FireBaseDataManager.Instance.AllAiPlayers.Add(new PlayerDataInfo { playerName = aiName });
+            FireBaseDataManager.Instance.playersRoomData.Add(new PlayerDataInfo { playerName = aiName });
+        }
+
+        Debug.Log(
+            $"[FillRound0] Players before: {existingCount}, AI added: {aiCountNeeded}, Total: {FireBaseDataManager.Instance.playersRoomData.Count}");
+
+        FireBaseDataManager.Instance.SendUnifiedFirebaseData();
+    }
+
+
+// ---------------------- RPC SYNC ----------------------
+
+    void SendNameListRPC(string methodName, List<string> list, int count)
+    {
+        var args = list.Take(count).Cast<object>().ToArray();
+        photonView.RPC(methodName, RpcTarget.Others, args);
+    }
+
+    public void SaveList(string key, List<string> Nameslist)
+    {
+        string listString = string.Join(",", Nameslist); // Convert list to a comma-separated string
+        PlayerPrefs.SetString(key, listString); // Save the string in PlayerPrefs
+        PlayerPrefs.Save();
+    }
+
+// Load List<string> from a comma-separated string
+    public List<string> LoadList(string key)
+    {
+        string listString = PlayerPrefs.GetString(key, "");
+        List<string> list = new List<string>();
+
+        if (!string.IsNullOrEmpty(listString))
+        {
+            string[] items = listString.Split(','); // Split the string into individual items
+            foreach (string item in items)
+            {
+                list.Add(item); // Add each item to the list
+            }
+        }
+
+        return list;
     }
 
     IEnumerator DelayToStartGame()
@@ -275,66 +865,14 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
         SceneManager.LoadScene("Multi");
     }
 
-    public override void OnRoomPropertiesUpdate(ExitGames.Client.Photon.Hashtable propertiesThatChanged)
-    {
-        base.OnRoomPropertiesUpdate(propertiesThatChanged);
-        //if (ui.isTournament)
-        //{
-
-
-        //    for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
-        //    {
-        //        if (propertiesThatChanged.ContainsKey($"Skin{PhotonNetwork.PlayerList[i].ActorNumber}"))
-        //        {
-        //            int newval = (int)propertiesThatChanged[$"Skin{PhotonNetwork.PlayerList[i].ActorNumber}"];
-        //            matchSlots.UpdateSlotSkin(ui.GetPLayerSkin(newval), i, PhotonNetwork.PlayerList[i].ActorNumber);
-
-
-        //        }
-        //    }
-        //}
-    }
-
-    public override void OnPlayerPropertiesUpdate(Player targetPlayer, Hashtable changedProps)
-    {
-        //if (ui.isTournament)
-        //{
-        //    if (changedProps.ContainsKey("Skin"))
-        //    {
-        //        int newval = (int)changedProps["Skin"];
-
-        //        for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
-        //        {
-        //            if (PhotonNetwork.PlayerList[i].ActorNumber == targetPlayer.ActorNumber)
-        //            {
-        //                matchSlots.UpdateSlotSkin(ui.GetPLayerSkin(newval), i, targetPlayer.ActorNumber);
-
-        //            }
-
-        //        }
-        //    }
-        //}
-    }
-    //[PunRPC]
-    //public void ClearTournamentsSkin(int actornum)
-    //{
-
-    //    for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
-    //    {
-    //        if (PhotonNetwork.PlayerList[i].ActorNumber == actornum)
-    //        {
-    //            matchSlots.clearSkinSlot(  i, PhotonNetwork.PlayerList[i].ActorNumber);
-
-    //        }
-
-    //    }
-    //}
     [PunRPC]
     public void SyncTournamentsSkins(int actornum, int skin)
     {
         for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
         {
-            if (PhotonNetwork.PlayerList[i].ActorNumber == actornum)
+            if (PhotonNetwork.PlayerList[i].ActorNumber == actornum &&
+                PhotonNetwork.PlayerList[i].CustomProperties.ContainsKey("PlayerType") &&
+                (string)PhotonNetwork.PlayerList[i].CustomProperties["PlayerType"] == "ActualPlayer")
             {
                 matchSlots.UpdateSlotSkin(ui.GetPLayerSkin(skin), i, PhotonNetwork.PlayerList[i].ActorNumber);
             }
@@ -343,36 +881,30 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
 
     public override void OnPlayerEnteredRoom(Player newPlayer)
     {
-        if (ui.isTournament)
-        {
-            if (mymatchroom != "")
-            {
-                //if (PhotonNetwork.CurrentRoom.PlayerCount == 2)
-                //{
-                //    PhotonNetwork.CurrentRoom.IsOpen = false;
-                //    PhotonNetwork.CurrentRoom.IsVisible = false;
-                //    //MainUI.playerNames[0] = PhotonNetwork.NickName;
-                //    // MainUI.playerNames[1] = newPlayer.NickName;
-                //    //  ui.isMatched = true;
+        if (!ui.isTournament) return;
 
-                //    if (PhotonNetwork.IsMasterClient)
-                //    {
-                //        StartCoroutine(DelayToStartGame());
-                //    }
-                //}
-            }
-            else
-            {
-                Debug.Log($"New Player Joined: {newPlayer.NickName}");
-                UpdateTournamentPlayerList();
-                photonView.RPC("UpdateSkinValues", RpcTarget.All);
-            }
+        if (!string.IsNullOrEmpty(mymatchroom))
+        {
+            // Presumably some logic will be added here
         }
+
+        Debug.Log($"A new player {newPlayer} has joined the match room.");
+
+        Debug.Log(" New Data has been updated ");
+        photonView.RPC("UpdateSkinValues", RpcTarget.All);
     }
 
-    public override void OnLeftRoom()
+
+    [ContextMenu("Populate")]
+    public void AddNewPlayerAndUpdateData()
     {
-        base.OnLeftRoom();
+        matchSlots.clearslots();
+        FireBaseDataManager.Instance.DataLoader.LoadDataFromFirebase();
+        for (int i = 0; i < FireBaseDataManager.Instance.DataLoader.playersRoomData.Count; i++)
+        {
+            matchSlots.PopulateSlotManual(FireBaseDataManager.Instance.DataLoader.playersRoomData[i].playerName, i, 0,
+                RoundCount);
+        }
     }
 
     public override void OnPlayerLeftRoom(Player otherPlayer)
@@ -385,9 +917,6 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
             }
             else
             {
-                Debug.Log($"Player Left: {otherPlayer.NickName}");
-                UpdateTournamentPlayerList();
-
                 photonView.RPC("UpdateSkinValues", RpcTarget.All);
             }
         }
@@ -400,145 +929,44 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
             PlayerPrefs.GetInt("SKIN1"));
     }
 
+    void HandleLog(string logString, string stackTrace, LogType type)
+    {
+        string fullLog = $"[{type}] {logString}\n{stackTrace} (Script lobby: {name})";
+        Debug.Log(fullLog);
+    }
+
     private void UpdateTournamentPlayerList()
     {
         tournamentPlayers.Clear();
         foreach (Player player in PhotonNetwork.PlayerList)
         {
             tournamentPlayers.Add(player.NickName);
-
-
-            //    if (PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey($"Skin{player.ActorNumber}"))
-            //    {
-            //        Debug.Log("haveskin");
-            //        for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
-            //        {
-            //            if (PhotonNetwork.PlayerList[i].ActorNumber == player.ActorNumber)
-            //            {
-            //                Debug.Log("haveskin 2");
-            //                int skinNum = (int)PhotonNetwork.CurrentRoom.CustomProperties[$"Skin{player.ActorNumber}"];
-            //                matchSlots.UpdateSlotSkin(ui.GetPLayerSkin(skinNum), i, PhotonNetwork.PlayerList[i].ActorNumber);
-
-            //            }
-
-            //        }
-            //    }
-        }
-
-        photonView.RPC("SyncTournamentPlayerList", RpcTarget.All, string.Join("\n", tournamentPlayers));
-
-
-        //    photonView.RPC("SyncTournamentPlayerList", RpcTarget.All, tournamentPlayers.ToArray());
-    }
-
-    [PunRPC]
-    private void SyncTournamentPlayerList(string pl)
-    {
-//        playerListText.text = "Players in Tournament:\n" + pl;
-
-
-        //    List<string> playerList = new List<string>(pl);
-
-        Debug.Log("Received Player List:");
-
-        matchSlots.clearslots();
-        for (int i = 0; i < PhotonNetwork.PlayerList.Length; i++)
-        {
-            matchSlots.PopulateSlot(PhotonNetwork.PlayerList[i].NickName, i, PhotonNetwork.PlayerList[i].ActorNumber);
-        }
-    }
-
-
-    [PunRPC]
-    public void AddAiplayer(int pos, string ainame)
-    {
-        matchSlots.PopulateSlot(ainame, pos, -1);
-    }
-
-    public void StartTournament()
-    {
-        if (isTournamentOwner && PhotonNetwork.CurrentRoom.PlayerCount >= 1)
-        {
-            int roundcount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
-
-            if (roundcount <= 0)
-            {
-                fillRemainingPlayers();
-            }
-
-            Invoke("AssignPlayersToMatches", 3);
-            //  photonView.RPC("StartTournamentRPC", RpcTarget.All);
-        }
-    }
-    
-    bool hasRoomFilled = false;
-
-    [PunRPC]
-    private void StartTournamentRPC()
-    {
-        Debug.Log("Tournament started! Assigning players to matches.");
-    }
-
-    List<string> namelist = new List<string>();
-
-    public void fillRemainingPlayers()
-    {
-        int remcount = 8 - PhotonNetwork.PlayerList.ToList().Count;
-
-        namelist.Clear();
-        int pos = PhotonNetwork.PlayerList.ToList().Count;
-        if (remcount > 0)
-        {
-            for (int i = 0; i < 8; i++)
-            {
-                namelist.Add(GetRandomName());
-                if (i >= pos)
-                {
-                    photonView.RPC("AddAiplayer", RpcTarget.All, i, namelist[i]);
-                }
-            }
-        }
-
-        photonView.RPC("FillRPCNamesList", RpcTarget.Others, namelist[0], namelist[1], namelist[2], namelist[3],
-            namelist[4], namelist[5],
-            namelist[6], namelist[7]);
-    }
-
-    [PunRPC]
-    public void FillRPCNamesList(string n1, string n2, string n3, string n4, string n5, string n6, string n7, string n8)
-    {
-        namelist.Clear();
-        namelist.Add(n1);
-        namelist.Add(n2);
-        namelist.Add(n3);
-        namelist.Add(n4);
-        namelist.Add(n5);
-        namelist.Add(n6);
-        namelist.Add(n7);
-        namelist.Add(n8);
-
-        int remcount = 8 - PhotonNetwork.PlayerList.ToList().Count;
-
-
-        int pos = PhotonNetwork.PlayerList.ToList().Count;
-        if (remcount > 0)
-        {
-            for (int i = 0; i < 8; i++)
-            {
-                if (i >= pos)
-                {
-                    AddAiplayer(i, namelist[i]);
-                }
-            }
         }
     }
 
     private void AssignPlayersToMatches()
     {
-        List<Player> players = new List<Player>(PhotonNetwork.PlayerList);
+        List<Player> players = PhotonNetwork.PlayerList.ToList();
+
         int matchNumber = 1;
 
-        int totalplayers = players.Count;
+        int totalplayers = 0;
+
+        int count = players.Count;
+        while (count > 1)
+        {
+            if (count >= 2)
+            {
+                totalplayers++;
+                count -= 2;
+            }
+        }
+
+        if (count == 1)
+        {
+            totalplayers++;
+        }
+
         while (players.Count > 1)
         {
             if (players.Count >= 2)
@@ -550,7 +978,8 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
 
                 string matchRoom = $"Match_{matchNumber}";
                 photonView.RPC("MovePlayersToMatch", RpcTarget.All, player1.ActorNumber, player2.ActorNumber, matchRoom,
-                    player1.NickName, player2.NickName, false);
+                    player1.NickName, player2.NickName, false, totalplayers);
+
                 matchNumber++;
             }
         }
@@ -565,9 +994,28 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
             string matchRoom = $"Match_{matchNumber}";
             Player player1 = players[0];
             players.RemoveAt(0);
-            photonView.RPC("MovePlayersToMatch", RpcTarget.All, player1.ActorNumber, -1, matchRoom, player1.NickName,
-                namelist[totalplayers], true);
+
+            string aiName = "";
+
+            // RoundCount = PlayerPrefs.GetInt(Prefs.TournamentRoundCount, 0);
+
+            photonView.RPC("MovePlayersToMatch", RpcTarget.All, player1.ActorNumber, -1, matchRoom,
+                player1.NickName, aiName, true, totalplayers);
+
+            MatchData match = new MatchData(player1.NickName, null, matchRoom, false);
+
+            PlayerMatchData playerMatchData = new PlayerMatchData
+            {
+                playerId = player1.UserId,
+                data = match
+            };
+
+            FireBaseDataManager.Instance.localMatchData.Add(playerMatchData);
         }
+
+        SetRoundsData();
+
+        SetRound();
     }
 
     bool canmakeroom = false;
@@ -575,17 +1023,29 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
     public List<string> randomFNames;
     public List<string> randomLNames;
 
+    private List<string> usedNames = new List<string>();
+
     public string GetRandomName()
     {
         string name = randomFNames[Random.Range(0, randomFNames.Count)];
-        // name += " " + randomLNames[Random.Range(0, randomLNames.Count)];
+
+        while (usedNames.Contains(name))
+        {
+            name = randomFNames[Random.Range(0, randomFNames.Count)];
+        }
+
+        usedNames.Add(name);
+
         return name;
     }
 
     [PunRPC]
     private void MovePlayersToMatch(int player1ID, int player2ID, string matchRoom, string plName1, string plName2,
-        bool isai)
+        bool isai, int totalplayers)
     {
+        PlayerPrefs.SetInt(Prefs.playerCount, totalplayers);
+        PlayerPrefs.Save();
+
         if (PhotonNetwork.LocalPlayer.ActorNumber == player1ID || PhotonNetwork.LocalPlayer.ActorNumber == player2ID)
         {
             if (PhotonNetwork.LocalPlayer.ActorNumber == player1ID)
@@ -626,22 +1086,9 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
             waittime = 3;
             tournamentLoadingScreen.SetActive(false);
         }
-        else
-        {
-        }
     }
 
     public string mymatchroom = "";
-
-    //public override void OnJoinedRoom()
-    //{
-    //    Debug.Log($"Joined Room: {PhotonNetwork.CurrentRoom.Name}");
-
-    //    if (PhotonNetwork.CurrentRoom.Name.StartsWith("Match_"))
-    //    {
-    //        Debug.Log("Match started. Play against opponent!");
-    //    }
-    //}
 
     public void OnMatchEnd(bool won)
     {
@@ -671,5 +1118,11 @@ public class TournamentLobbyCreator : MonoBehaviourPunCallbacks
         {
             Debug.Log("Tournament Winner: " + PhotonNetwork.PlayerList[0].NickName);
         }
+    }
+
+    [ContextMenu("LoadScene")]
+    public void SceneReseter()
+    {
+        SceneManager.LoadScene("Main");
     }
 }

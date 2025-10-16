@@ -9,11 +9,6 @@ public class OnMouseOverColor : MonoBehaviour
     public Text skinsText;
     public Text optionsText;
 
-    void Start()
-    {
-        
-    }
-
     public void SkinsHover()
     {
         skinsText.color = m_MouseOverColor;

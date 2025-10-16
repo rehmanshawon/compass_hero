@@ -698,7 +698,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: '                   IS SOME REAL FUN THAT IS EASY TO LEARN!'
+  m_Text: COMPASS HERO IS SOME REAL FUN THAT IS EASY TO LEARN!
 --- !u!222 &76151859
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -1803,8 +1803,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 234.9}
-  m_SizeDelta: {x: 471.3906, y: 104.8335}
+  m_AnchoredPosition: {x: -24, y: 234.9}
+  m_SizeDelta: {x: 471.3906, y: 188}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &268384459
 MonoBehaviour:
@@ -1826,7 +1826,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 0379cf7ebc31fca42bfc8b937ed665b2, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 027277da0a0f94084b9ce07b0c097f04, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -2537,10 +2537,10 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Subgrids delivers just this! Subgrids zooms right into the action! Non
-    stop action from the start to the finish! This is what Subgrids is all about.
-    But if at first you don't quite get it, don't be intimidated. Keep playing and
-    you will get better. You will get it, don't give up!
+  m_Text: Warzoom delivers just this! Warzoom zooms right into the action! Non stop
+    action from the start to the finish! This is what Warzoom is all about. But if
+    at first you don't quite get it, don't be intimidated. Keep playing and you will
+    get better. You will get it, don't give up!
 --- !u!222 &347673090
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -5349,7 +5349,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &798402571
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5367,8 +5367,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -204.50473, y: 185.3}
-  m_SizeDelta: {x: 471.3906, y: 104.8335}
+  m_AnchoredPosition: {x: -182.40353, y: 178.40265}
+  m_SizeDelta: {x: 475, y: 250}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &798402572
 MonoBehaviour:
@@ -5390,7 +5390,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 0379cf7ebc31fca42bfc8b937ed665b2, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 027277da0a0f94084b9ce07b0c097f04, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -5801,8 +5801,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -5, y: 4}
-  m_SizeDelta: {x: 522.6175, y: 177.2014}
+  m_AnchoredPosition: {x: 22, y: -27}
+  m_SizeDelta: {x: 522.6175, y: 130}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &895706162
 MonoBehaviour:
@@ -5824,7 +5824,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 7498386fe9fe4454ba44484e3ccb5d89, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 1fc3a3f400ee8a8428d7f8577d82f212, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -8026,8 +8026,8 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Sonar is used by subs only and may reveal an enemy sub up to seven spaces.
-    SONAR does not attack units. Sonar also reveals the locations of Atomic Mines.
+  m_Text: Sonar is used by Submarines only. And may reveal an enemy Sub, Atomic Mine,
+    or Bermuda Triangles up to seven spaces. Sonar does not attack units.
 --- !u!222 &1236143120
 CanvasRenderer:
   m_ObjectHideFlags: 0

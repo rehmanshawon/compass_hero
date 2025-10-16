@@ -3620,7 +3620,6 @@ namespace Photon.Realtime
             while (this.callbackTargetChanges.Count > 0)
             {
                 CallbackTargetChange change = this.callbackTargetChanges.Dequeue();
-                Debug.LogError("changetarget : " + change.AddTarget);
 
                 if (change.AddTarget)
                 {

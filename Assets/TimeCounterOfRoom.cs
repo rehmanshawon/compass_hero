@@ -1,91 +1,131 @@
 using UnityEngine;
 using UnityEngine.UI;
-using System;
 using UnityEngine.Events;
+using System;
+using TMPro;
 
 public class TimeCounterOfRoom : MonoBehaviour
 {
-    public Text TimeText;
-    public float ActualTime;
-    private bool isCountingDown = true;
+    [Header("UI Elements")]
 
+    [Header("Timer Settings")]
+    [SerializeField] private float countdownDuration = 180f;
+    private float actualTime;
+    private bool isCountingDown = false;
+    public TextMeshProUGUI timerText;
+
+    [Header("Time Logic")]
+
+    [Header("Events")]
     public UnityEvent OnTimeEnd;
-
-    public bool IfCheckForTime;
-
-    void OnEnable()
+    private void OnEnable()
     {
-        if (IfCheckForTime)
+        if (TournamentLobbyCreator.Instance.IsPaidUser)
+        {
+            return;
+        }
+
+        SetupTimeConditions();
+    }
+    private void SetupTimeConditions()
+    {
+        // Local time logic (non-counting display only)
+        if (TournamentLobbyCreator.Instance.checkLocalTime)
+        {
+            actualTime = 0;
+            isCountingDown = false;
+            return; // Skip further setup
+        }
+
+        if (TournamentLobbyCreator.Instance.checkPSTTime)
         {
             DateTime pstTime = GetPacificTime();
 
-            Debug.Log("UTC Time: " + DateTime.UtcNow);
-            Debug.Log("PST Time: " + pstTime);
-
-            TimeSpan startTime = new TimeSpan(18, 30, 0); // 6:30 PM
-            TimeSpan endTime = new TimeSpan(19, 0, 0);  // 7:00:00 PM
+            TimeSpan startTime = new TimeSpan(18, 50, 0); // 6:50 PM
+            TimeSpan endTime = new TimeSpan(19, 0, 0);    // 7:00 PM
 
             if (pstTime.TimeOfDay >= endTime)
             {
-                ActualTime = 0;
+                actualTime = 0;
                 isCountingDown = false;
-                TimeText.text = "End!";
-                OnCountdownFinished();
                 return;
             }
 
             if (pstTime.TimeOfDay <= startTime)
             {
-                ActualTime = (float)(endTime - startTime).TotalSeconds;
+                actualTime = (float)(endTime - startTime).TotalSeconds;
             }
             else
             {
-                ActualTime = (float)(endTime - pstTime.TimeOfDay).TotalSeconds;
+                actualTime = (float)(endTime - pstTime.TimeOfDay).TotalSeconds;
             }
 
+            isCountingDown = true;
             UpdateTimerUI();
+        }
+    }
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.End))
+        {
+            if (TournamentLobbyCreator.Instance.isTournamentOwner)
+            {
+                StartTimer();
+            }
+        }
+
+        if (TournamentLobbyCreator.Instance.RoundCount > 0)
+        {
+            timerText.gameObject.SetActive(false);
         }
     }
 
     private void FixedUpdate()
     {
-        if (isCountingDown && ActualTime > 0)
+        if (!isCountingDown) return;
+
+        actualTime -= Time.deltaTime;
+
+        if (actualTime <= 0)
         {
-            ActualTime -= Time.deltaTime;
-            UpdateTimerUI();
-        }
-        else if (isCountingDown && ActualTime <= 0)
-        {
-            ActualTime = 0;
+            actualTime = 0;
             isCountingDown = false;
-            TimeText.text = "End!";
             OnCountdownFinished();
+        }
+        else
+        {
+            UpdateTimerUI();
         }
     }
 
-    // Manual PST/PDT conversion (for WebGL)
-    DateTime GetPacificTime()
+    private void StartTimer()
+    {
+        actualTime = countdownDuration;
+        isCountingDown = true;
+        UpdateTimerUI();
+    }
+    private void UpdateTimerUI()
+    {
+        TimeSpan time = TimeSpan.FromSeconds(actualTime);
+        string formattedTime = string.Format("{0:D2}:{1:D2}", time.Minutes, time.Seconds);
+        timerText.text = formattedTime;
+        Debug.Log("Timer: " + formattedTime);
+    }
+    private void OnCountdownFinished()
+    {
+        Debug.Log("OnCountdownFinished");
+        OnTimeEnd?.Invoke();
+    }
+    private DateTime GetPacificTime()
     {
         DateTime utcNow = DateTime.UtcNow;
 
-        // Simple DST check (adjust for your needs if needed)
         bool isDaylightSaving = utcNow.Month > 3 && utcNow.Month < 11 ||
-                               (utcNow.Month == 3 && utcNow.Day >= 8) ||
-                               (utcNow.Month == 11 && utcNow.Day <= 1);
+                                (utcNow.Month == 3 && utcNow.Day >= 8) ||
+                                (utcNow.Month == 11 && utcNow.Day <= 1);
+        
 
         TimeSpan offset = isDaylightSaving ? new TimeSpan(-7, 0, 0) : new TimeSpan(-8, 0, 0);
         return utcNow + offset;
-    }
-
-    void UpdateTimerUI()
-    {
-        TimeSpan time = TimeSpan.FromSeconds(ActualTime);
-        TimeText.text = string.Format("{0:D2}:{1:D2}", time.Minutes, time.Seconds);
-    }
-
-    void OnCountdownFinished()
-    {
-        Debug.Log("OnCountdownFinished");
-        OnTimeEnd.Invoke();
     }
 }

@@ -1,15 +1,11 @@
+using System.Net.Mime;
 using Photon.Pun;
-using Photon.Realtime;
+using UnityEngine;
 
 public class NetworkPun : MonoBehaviourPunCallbacks
-{    
+{
     void Start()
     {
-        // Set the client timeout to 65 seconds
-        PhotonNetwork.NetworkingClient.LoadBalancingPeer.DisconnectTimeout = 65000;
-    
- 
+        PhotonNetwork.NetworkingClient.LoadBalancingPeer.DisconnectTimeout = 90000000;
     }
-
-
 }

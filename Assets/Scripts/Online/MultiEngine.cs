@@ -13,6 +13,8 @@ using Unity.Burst.CompilerServices;
 
 public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
 {
+    // Simple MonoBehaviour singleton for easy access from other scripts (e.g. TimerCountdown)
+    public static MultiEngine Instance { get; private set; }
     public GameObject gameUI;
     enum TeamIndex
     {
@@ -1500,15 +1502,13 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
                         }
                     }
 
-                    if (bootingObject.GetComponent<Image>().fillAmount <= 0f && isShowWinning == false)
+                    // If the visual timer is depleted, allow the master to end the turn regardless of whose turn it is.
+                    if (PhotonNetwork.IsMasterClient && bootingObject.GetComponent<Image>().fillAmount <= 0f && isShowWinning == false)
                     {
-                        if ((whoseTurn == (int)TurnIndex.Player1 && isMasterInGame) || (whoseTurn == (int)TurnIndex.Player2 && !isMasterInGame))
+                        if (isEndedByMines || isIncreasedByMines)
                         {
-                            if (isEndedByMines || isIncreasedByMines)
-                            {
-                                isShowWinning = true;
-                                EndTurn();
-                            }
+                            isShowWinning = true;
+                            if (!IsWaitingForServerTurnChange) { EndTurn(); }
                         }
                     }
 
@@ -1530,11 +1530,36 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
     {
         if (subAvailability.Instance != null)
             subAvailability.onUpdateSub -= setSubNow;
+        if (Instance == this) Instance = null;
 
+    }
+    
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(this);
+            return;
+        }
+        Instance = this;
     }
     void Start()
     {
         InteractiveTutorial.TutorialActive = false;
+        // Ensure the player name/id above the timer is readable from the start
+        try
+        {
+            if (currentPlayerNameText != null)
+            {
+                // Make the name above the timer readable but constrained to the UI box
+                currentPlayerNameText.resizeTextForBestFit = true;
+                try { currentPlayerNameText.resizeTextMinSize = 16; } catch { }
+                try { currentPlayerNameText.resizeTextMaxSize = 28; } catch { }
+                // If no names assigned yet, set a short placeholder to avoid overflow
+                if (string.IsNullOrEmpty(currentPlayerNameText.text)) currentPlayerNameText.text = "Rehman";
+            }
+        }
+        catch { }
         // Subscribe to the application focus events
         //Application.focusChanged += OnApplicationFocusChange;
         if (subAvailability.Instance != null)
@@ -2313,22 +2338,21 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
             }
  
             // print("???" + bootingObject.GetComponent<Image>().fillAmount);
-            if (bootingObject.GetComponent<Image>().fillAmount <= 0f && isShowWinning == false && waitingforserverTurnChange==false)
+            if (PhotonNetwork.IsMasterClient && bootingObject.GetComponent<Image>().fillAmount <= 0f && isShowWinning == false && waitingforserverTurnChange==false)
             {
-                if ((whoseTurn == (int)TurnIndex.Player1 && isMasterInGame) || (whoseTurn == (int)TurnIndex.Player2 && !isMasterInGame))
+                // Master acts as authority regardless of whose turn locally; avoid triggering during animations/dice/etc.
+                endPlayButton.SetActive(false);
+                if (!isEndedByMines && !isIncreasedByMines && !isMoveAnimation && !isIncreasedByBermuda && !isDiceRolling)
                 {
-                    endPlayButton.SetActive(false);
-                    
-                    if (!isEndedByMines && !isIncreasedByMines && !isMoveAnimation && !isIncreasedByBermuda && !isDiceRolling)
-                    {
-                        isShowWinning = true;
-                        EndTurn();
-                    }
+                    isShowWinning = true;
+                    if (!IsWaitingForServerTurnChange) { EndTurn(); }
                 }
             }
         }
     }
-    bool waitingforserverTurnChange=false;
+    private bool waitingforserverTurnChange = false;
+    private float waitingSince = -1f; // when we started waiting for server turn change
+    public bool IsWaitingForServerTurnChange { get { return waitingforserverTurnChange; } }
     // Tab change detect
     //private void OnApplicationFocusChange(bool hasFocus)
     //{
@@ -2356,30 +2380,76 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
         //StartCoroutine(PostEndedRoom(MainUI.frontURL + "/api/endPlaying"));
         yield return new WaitForSeconds(10f);
         
-        SceneManager.LoadScene("Main");
         if (TournamentLobbyCreator.isInTournament())
         {
             PhotonNetwork.LeaveRoom();
         }
         else
         {
+            PhotonNetwork.LeaveRoom();
+            yield return new WaitForSeconds(2f);
+
             PhotonNetwork.Disconnect();
+            yield return new WaitForSeconds(2f);
+
 
         }        
+        
+        SceneManager.LoadScene("Main");
+        
+    }
+    IEnumerator DelayToEndGameCopy()
+    {
+        //StartCoroutine(PostEndedRoom(MainUI.frontURL + "/api/endPlaying"));
+        yield return new WaitForSeconds(1f);
+        
+        if (TournamentLobbyCreator.isInTournament())
+        {
+            PhotonNetwork.LeaveRoom();
+        }
+        else
+        {
+            PhotonNetwork.LeaveRoom();
+            yield return new WaitForSeconds(4f);
+
+            PhotonNetwork.Disconnect();
+            yield return new WaitForSeconds(4f);
+
+        }        
+        
+        FireBaseDataManager.Instance.playersRoomData.Clear();
+        
+        FireBaseDataManager.Instance.DataLoader.playersRoomData.Clear();
+        
+        SceneManager.LoadScene("Main");
+        
     }
 
     public void ExitBtnClick()
     {        
-        SceneManager.LoadScene("Main");
-        if (TournamentLobbyCreator.isInTournament())
-        {
-            PhotonNetwork.LeaveRoom();
-        }
-        else
-        {
-            PhotonNetwork.Disconnect();
+        // if (TournamentLobbyCreator.isInTournament())
+        // {
+        //     PhotonNetwork.LeaveRoom();
+        // }
+        // else
+        // {
+        //     Invoke(nameof(Leave),1f);
+        //     Invoke(nameof(Disconect),1f);
+        // }
+        // SceneManager.LoadScene("Main");
 
-        }
+        StartCoroutine(DelayToEndGameCopy());
+    }
+
+    void Leave()
+    {
+        PhotonNetwork.LeaveRoom();
+
+    }
+
+    void Disconect()
+    {
+        PhotonNetwork.Disconnect();
     }
 
     public int GeneralNumberOfEnemy()
@@ -3279,20 +3349,16 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
 
         yield return new WaitForSeconds(5f);
 
-        if (whoseTurn == (int)TurnIndex.Player1 && players[0].GetComponent<PlayerInfo>().playTimes == 0)
+        if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient)
         {
-            if (!isMasterInGame)
+            if (whoseTurn == (int)TurnIndex.Player1 && players[0].GetComponent<PlayerInfo>().playTimes == 0)
             {
                 Debug.Log("Delay Turn called 0 ");
                 SyncTurn(new object[] { 1 });
             }
-        }
-        else if (whoseTurn == (int)TurnIndex.Player2 && players[1].GetComponent<PlayerInfo>().playTimes == 0)
-        {
-            if (isMasterInGame)
+            else if (whoseTurn == (int)TurnIndex.Player2 && players[1].GetComponent<PlayerInfo>().playTimes == 0)
             {
                 Debug.Log("Delay Turn called 1");
-
                 SyncTurn(new object[] { 0 });
             }
         }
@@ -4125,15 +4191,15 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
             }
         }
 
-        if (bootingObject.GetComponent<Image>().fillAmount <= 0f && isShowWinning == false)
+        if (PhotonNetwork.IsMasterClient && bootingObject.GetComponent<Image>().fillAmount <= 0f && isShowWinning == false)
         {
             if ((whoseTurn == (int)TurnIndex.Player1 && isMasterInGame) || (whoseTurn == (int)TurnIndex.Player2 && !isMasterInGame))
             {
-                if (isIncreasedByBermuda)
-                {
-                    isShowWinning = true;                 
-                    EndTurn();
-                }
+                    if (isIncreasedByBermuda)
+                    {
+                        isShowWinning = true;                 
+                        if (!IsWaitingForServerTurnChange) { EndTurn(); }
+                    }
             }
         }
 
@@ -6206,12 +6272,28 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
         infoBombs.SetActive(false);
 
         bootingObject.SetActive(true);
-        if (turnsrem ==-1)
-        {
-            bootingObject.GetComponent<GameSettingsApplier>().resetTimer();
-        }
-
+        // Reset and re-arm the radial fill each turn; if server sent remaining plays (turnsrem), we still re-arm visual timer
+        bootingObject.GetComponent<GameSettingsApplier>().resetTimer();
         bootingObject.GetComponent<GameSettingsApplier>().setTimerActive(true);
+
+        // Also restart the on-screen countdown, if present
+        try
+        {
+            var timer = FindObjectOfType<TimerCountdown>();
+            if (timer != null)
+            {
+                float duration = 120f;
+                // Try to get duration from GameSettingsApplier if available
+                var gsa = bootingObject != null ? bootingObject.GetComponent<GameSettingsApplier>() : null;
+                if (gsa != null && gsa.durationInSeconds > 0)
+                {
+                    duration = gsa.durationInSeconds;
+                }
+                Debug.Log($"Re-arming local countdown for new turn: {duration}s");
+                timer.StartNewTurn(duration);
+            }
+        }
+        catch { }
         isShowWinning = false;
 
         for (int i = 0; i < tiles.Length; i++)
@@ -6489,7 +6571,12 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
 
             playerAvatars[0].SetActive(true);
             playerAvatars[1].SetActive(false);
-            currentPlayerNameText.text = MainUI.playerNames[0];
+            {
+                string baseP1 = !string.IsNullOrEmpty(MainUI.playerNamesTurn[0]) ? MainUI.playerNamesTurn[0] : MainUI.playerNames[0];
+                currentPlayerNameText.text = RemoveGameoptionName(baseP1);
+                // Constrain name to fit box
+                try { currentPlayerNameText.resizeTextForBestFit = true; currentPlayerNameText.resizeTextMinSize = 16; currentPlayerNameText.resizeTextMaxSize = 28; } catch { }
+            }
         }
         else if (whoseTurn == (int)TurnIndex.Player2)
         {
@@ -6515,7 +6602,12 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
 
             playerAvatars[1].SetActive(true);
             playerAvatars[0].SetActive(false);
-            currentPlayerNameText.text = MainUI.playerNames[1];
+            {
+                string baseP2 = !string.IsNullOrEmpty(MainUI.playerNamesTurn[1]) ? MainUI.playerNamesTurn[1] : MainUI.playerNames[1];
+                currentPlayerNameText.text = RemoveGameoptionName(baseP2);
+                // Constrain name to fit box
+                try { currentPlayerNameText.resizeTextForBestFit = true; currentPlayerNameText.resizeTextMinSize = 16; currentPlayerNameText.resizeTextMaxSize = 28; } catch { }
+            }
         }
 
         for (int i = 0; i < force1ForCircle.Length; i++)
@@ -6617,7 +6709,10 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
                 playsLeftText.text = "" + players[0].GetComponent<PlayerInfo>().playTimes;
             }
             
-            infoPanel.GetComponentInChildren<Text>().text = RemoveGameoptionName(MainUI.playerNames[0]) + "'s Turn!";
+            string baseP1 = !string.IsNullOrEmpty(MainUI.playerNamesTurn[0]) ? MainUI.playerNamesTurn[0] : MainUI.playerNames[0];
+            string p1 = RemoveGameoptionName(baseP1);
+            infoPanel.GetComponentInChildren<Text>().text = p1 + "'s Turn!";
+            Debug.Log($"Turn switched to: {p1} (Player1)");
             StartCoroutine(DelayShowInfo(turnsrem==-1));
         }
         else if (whoseTurn == (int)TurnIndex.Player2)
@@ -6633,7 +6728,10 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
                 playsLeftText.text = "" + players[1].GetComponent<PlayerInfo>().playTimes;
             }
                 
-            infoPanel.GetComponentInChildren<Text>().text = RemoveGameoptionName(MainUI.playerNames[1]) + "'s Turn!";
+            string baseP2 = !string.IsNullOrEmpty(MainUI.playerNamesTurn[1]) ? MainUI.playerNamesTurn[1] : MainUI.playerNames[1];
+            string p2 = RemoveGameoptionName(baseP2);
+            infoPanel.GetComponentInChildren<Text>().text = p2 + "'s Turn!";
+            Debug.Log($"Turn switched to: {p2} (Player2)");
             StartCoroutine(DelayShowInfo(turnsrem == -1));
         }
 
@@ -6688,6 +6786,10 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public string RemoveGameoptionName(string str)
     {
+        if (string.IsNullOrEmpty(str))
+        {
+            return string.Empty;
+        }
         string tempNames = "";
         //int tempNameCount = 0;
 
@@ -7421,7 +7523,24 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
 
     public void EndTurn()
     {
-       // if (waitingforserverTurnChange == false)
+        // Idempotent guard: if a server turn change is already pending, ignore duplicate EndTurn calls
+        if (waitingforserverTurnChange)
+        {
+            Debug.Log("EndTurn called while waiting for server turn change - ignoring duplicate call.");
+            return;
+        }
+
+        // Master-authoritative: only the master client initiates EndTurn
+        if (PhotonNetwork.IsConnected && !PhotonNetwork.IsMasterClient)
+        {
+            Debug.Log("EndTurn called on non-master client - ignoring.");
+            return;
+        }
+
+        // mark that we've initiated a turn change and are awaiting authoritative sync
+    waitingforserverTurnChange = true;
+    waitingSince = Time.time;
+
         {
             isSelectedSync = false;
             isChangingTurn = true;
@@ -7431,23 +7550,125 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
             bootingObject.GetComponent<GameSettingsApplier>().resetTimer();
             bootingObject.GetComponent<GameSettingsApplier>().setTimerActive(false);
             waitingforserverTurnChange = true;
+            waitingSince = Time.time;
 
-            if (whoseTurn == (int)TurnIndex.Player1 && isMasterInGame)
+            if (whoseTurn == (int)TurnIndex.Player1)
             {
-                Debug.LogError("End Turn turn 1 ");
+                Debug.Log("End Turn turn 1 ");
 
                 SyncTurn(new object[] { 1 });
                 //    whoseTurn = 1;
             }
-            else if (whoseTurn == (int)TurnIndex.Player2 && !isMasterInGame)
+            else if (whoseTurn == (int)TurnIndex.Player2)
             {
-                Debug.LogError("End Turn turn 0 ");
+                Debug.Log("End Turn turn 0 ");
 
                 SyncTurn(new object[] { 0 });
                 //  whoseTurn = 0;
             }
         }
       
+    }
+
+    // Called by local timer when time runs out (TimerCountdown)
+    public void HandleTimerTurnEnd()
+    {
+        // If we're already waiting for a server turn change, allow a recovery if we're the master and it's been too long
+        if (waitingforserverTurnChange)
+        {
+            bool canForce = PhotonNetwork.IsConnected && PhotonNetwork.IsMasterClient && waitingSince > 0f && (Time.time - waitingSince > 3f);
+            if (!canForce)
+            {
+                Debug.Log("HandleTimerTurnEnd: already waiting for server turn change; ignoring.");
+                return;
+            }
+            Debug.LogWarning("HandleTimerTurnEnd: master stuck waiting >3s; forcing EndTurn again as recovery.");
+        }
+
+        // In multiplayer only master client should initiate EndTurn
+        if (PhotonNetwork.IsConnected)
+        {
+            if (PhotonNetwork.IsMasterClient)
+            {
+                Debug.Log("HandleTimerTurnEnd: master initiating EndTurn.");
+                EndTurn();
+            }
+            else
+            {
+                Debug.Log("HandleTimerTurnEnd: non-master requesting master to end turn.");
+                RequestEndTurnFromMaster();
+            }
+        }
+        else
+        {
+            // Single-player fallback: perform local turn change
+            Debug.Log("HandleTimerTurnEnd: singleplayer fallback - ChangeTurn.");
+            ChangeTurn();
+        }
+    }
+
+    // Non-master informs master that local timer expired so master can authoritatively change the turn
+    private void RequestEndTurnFromMaster()
+    {
+        // prevent spamming multiple requests while waiting
+    if (waitingforserverTurnChange) return;
+    waitingforserverTurnChange = true;
+    waitingSince = Time.time;
+
+        try
+        {
+            // include local player's actor number and the perceived current turn
+            object[] content = new object[] { PhotonNetwork.LocalPlayer.ActorNumber, whoseTurn };
+            RaiseEventOptions opts = new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient };
+            PhotonNetwork.RaiseEvent(34, content, opts, SendOptions.SendReliable);
+            Debug.Log("Raised Event 34 (TimerExpiredRequest) to master.");
+            // Start a short timeout to retry if we don't get the authoritative turn sync
+            StartCoroutine(NonMasterTurnRequestRetry());
+        }
+        catch
+        {
+            // if anything goes wrong, clear the waiting flag to avoid deadlock
+            waitingforserverTurnChange = false;
+            waitingSince = -1f;
+        }
+    }
+
+    private System.Collections.IEnumerator NonMasterTurnRequestRetry()
+    {
+        // Only non-master should be running this
+        if (!PhotonNetwork.IsConnected || PhotonNetwork.IsMasterClient) yield break;
+
+        const int maxAttempts = 2; // initial send + 2 retries = 3 total attempts
+        int attempts = 0;
+        float deadline = Time.time + 2.5f; // wait ~2.5s for first response
+        while (waitingforserverTurnChange && attempts < maxAttempts)
+        {
+            while (waitingforserverTurnChange && Time.time < deadline)
+            {
+                yield return null;
+            }
+            if (!waitingforserverTurnChange) yield break; // got response, we're done
+
+            // retry
+            attempts++;
+            try
+            {
+                object[] content = new object[] { PhotonNetwork.LocalPlayer.ActorNumber, whoseTurn };
+                RaiseEventOptions opts = new RaiseEventOptions { Receivers = ReceiverGroup.MasterClient };
+                PhotonNetwork.RaiseEvent(34, content, opts, SendOptions.SendReliable);
+                Debug.Log($"Retrying Event 34 to master (attempt {attempts}/{maxAttempts}).");
+            }
+            catch { /* ignore */ }
+            deadline = Time.time + 2.5f;
+        }
+
+        // If still waiting after retries, clear and allow local logic to re-trigger next frame
+        if (waitingforserverTurnChange)
+        {
+            Debug.LogWarning("No turn sync received after retries. Clearing wait flag to allow re-request.");
+            waitingforserverTurnChange = false;
+            waitingSince = -1f;
+        }
     }
 
     public void ExitGame()
@@ -7920,9 +8141,29 @@ public class MultiEngine : MonoBehaviourPunCallbacks, IOnEventCallback
                     }
 
                     waitingforserverTurnChange = false;
+                    waitingSince = -1f;
                 }
             }
        
+        }
+        else if (eventCode == 34)
+        {
+            // TimerExpiredRequest (from non-master): only master should act
+            if (PhotonNetwork.IsMasterClient)
+            {
+                Debug.Log("Received Event 34 (TimerExpiredRequest) on master. Initiating EndTurn if not already pending.");
+                // If we're stuck waiting too long, accept another request as a recovery
+                bool stuckWaiting = waitingforserverTurnChange && (waitingSince > 0f) && (Time.time - waitingSince > 3f);
+                if (!waitingforserverTurnChange || stuckWaiting)
+                {
+                    if (stuckWaiting) Debug.LogWarning("Master was stuck waiting >3s; proceeding with EndTurn as recovery.");
+                    EndTurn();
+                }
+            }
+            else
+            {
+                Debug.Log("Received Event 34 on non-master - ignoring (master will handle).");
+            }
         }
         else if (eventCode == 2)
         {

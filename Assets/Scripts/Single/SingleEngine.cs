@@ -928,8 +928,8 @@ public class SingleEngine : MonoBehaviour
     #region MonoBehaviourCallBacks
     private void OnDestroy()
     {
-       //if(subAvailability.Instance!=null)
-       // subAvailability.onUpdateSub -= setSubNow;
+       if(subAvailability.Instance!=null)
+        subAvailability.onUpdateSub -= setSubNow;
 
     }
     public string getAiName()
@@ -940,10 +940,10 @@ public class SingleEngine : MonoBehaviour
     {
      
 
-        //if(subAvailability.Instance!=null)
-        //{
-        //    subAvailability.onUpdateSub += setSubNow;
-        //}
+        if(subAvailability.Instance!=null)
+        {
+            subAvailability.onUpdateSub += setSubNow;
+        }
 
             InteractiveTutorial.TutorialActive = istutorial;
       
@@ -960,6 +960,8 @@ public class SingleEngine : MonoBehaviour
 
         if (!MainUI.isPlayingNormal)
         {
+            Debug.Log("This is AI Match");
+            
             MainUI.playerNameForAI = "Guest";
             MainUI.playerNames[0] = "Guest";
             MainUI.nameAI =  getAiName();
@@ -970,7 +972,11 @@ public class SingleEngine : MonoBehaviour
             MainUI.skinIndex3 = 6;
             MainUI.skinIndex4 = 6;            
         }
-
+        else
+        {
+            MainUI.nameAI = PlayerPrefs.GetString(Prefs.AiPref);
+            MainUI.playerNames[1]=PlayerPrefs.GetString(Prefs.AiPref);
+        }
         // Real parameters
         startDialog.SetActive(true);
 
@@ -1715,7 +1721,7 @@ public class SingleEngine : MonoBehaviour
                 if (!isEndedByMines && !isIncreasedByMines && !isMoveAnimation && !isIncreasedByBermuda && !isDiceRolling)
                 {
                     isShowWinning = true;
-                    EndTurn();
+                    if (MultiEngine.Instance == null || !MultiEngine.Instance.IsWaitingForServerTurnChange) { EndTurn(); }
                 }
             }
         }
@@ -1813,6 +1819,9 @@ public class SingleEngine : MonoBehaviour
         if (MainUI.isPlayingNormal)
         {
             SceneManager.LoadScene("Main");
+            SceneManager.LoadScene("Main");
+            SceneManager.LoadScene("Main");
+            SceneManager.LoadScene("Main");
         }
         else
         {
@@ -1826,6 +1835,9 @@ public class SingleEngine : MonoBehaviour
    
         if (MainUI.isPlayingNormal)
         {
+            SceneManager.LoadScene("Main");
+            SceneManager.LoadScene("Main");
+            SceneManager.LoadScene("Main");
             SceneManager.LoadScene("Main");
         }
         else
@@ -2656,7 +2668,7 @@ public class SingleEngine : MonoBehaviour
             if (isIncreasedByBermuda)
             {
                 isShowWinning = true;
-                EndTurn();
+                if (MultiEngine.Instance == null || !MultiEngine.Instance.IsWaitingForServerTurnChange) { EndTurn(); }
             }
         }
 
@@ -6836,23 +6848,23 @@ public class SingleEngine : MonoBehaviour
                 }
         }
     }
-    //public void setSubNow()
-    //{
-    //    if (subAvailability.Instance != null)
-    //    {
-    //        Debug.Log("set2 a : " + subAvailability.Instance.available);
-    //        operationSerpentDialog.SetActive(subAvailability.Instance.available);
-    //    }
-    //    else
-    //    {
-    //        Debug.Log("set2 b : " + false);
-    //        operationSerpentDialog.SetActive(false);
-    //    }
-    //}
+    public void setSubNow()
+    {
+        if (subAvailability.Instance != null)
+        {
+            Debug.Log("set2 a : " + subAvailability.Instance.available);
+            operationSerpentDialog.SetActive(subAvailability.Instance.available);
+        }
+        else
+        {
+            Debug.Log("set2 b : " + false);
+            operationSerpentDialog.SetActive(false);
+        }
+    }
     public void OperationSerpent(int destroyedTeam)
     {
 
-        //operationSerpentDialog.SetActive(false);
+        operationSerpentDialog.SetActive(false);
 
         if (destroyedTeam == 1)
         {
@@ -6869,7 +6881,12 @@ public class SingleEngine : MonoBehaviour
             }
         }
 
-        operationSerpentDialog.SetActive(true);
+        if (subAvailability.Instance != null)
+        {
+            subAvailability.Instance.GetUpdatedData();
+
+        }
+        // operationSerpentDialog.SetActive(true);
     }
 
     public void SetMinesInfo(int minesInfo0, int minesInfo1, int minesInfo2)
@@ -8539,7 +8556,7 @@ public class SingleEngine : MonoBehaviour
                         if (isEndedByMines || isIncreasedByMines)
                         {
                             isShowWinning = true;
-                            EndTurn();
+                            if (MultiEngine.Instance == null || !MultiEngine.Instance.IsWaitingForServerTurnChange) { EndTurn(); }
                         }
                     }
 

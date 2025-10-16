@@ -1,16 +1,27 @@
 using System;
 using UnityEngine;
 using UnityEngine.UI;
-
+using TMPro;
 public class TimeHandler : MonoBehaviour
 {
-    public Text InfoText;
+    public TextMeshProUGUI InfoText;
+    public Text InfoText2;
     public GameObject TournamentPanel;
-    public bool IfCheckForTime;
+    public GameObject PeeWeePanel;
 
     void OnEnable()
     {
-        if (IfCheckForTime)
+        
+        if (TournamentLobbyCreator.Instance.IsPaidUser)
+        {
+            PeeWeePanel.SetActive(true);
+        }
+        else
+        {
+            PeeWeePanel.SetActive(false);
+        }
+        
+        if (TournamentLobbyCreator.Instance.IfCheckForTime)
         {
             DateTime pstTime = GetPacificTime();
 
@@ -32,25 +43,26 @@ public class TimeHandler : MonoBehaviour
             PerformTournamentActionOnTime();
         }
     }
-
-    // Manual Pacific Time calculation (works in WebGL)
+    private void Awake()
+    {
+      
+    }
+  
     DateTime GetPacificTime()
     {
         DateTime utcNow = DateTime.UtcNow;
 
-        // Simplified DST check (true for March to November)
         bool isDaylightSaving = utcNow.Month > 3 && utcNow.Month < 11 ||
                                (utcNow.Month == 3 && utcNow.Day >= 8) ||
                                (utcNow.Month == 11 && utcNow.Day <= 1);
 
-        // PDT = UTC-7 (with DST), PST = UTC-8 (without DST)
         TimeSpan offset = isDaylightSaving ? new TimeSpan(-7, 0, 0) : new TimeSpan(-8, 0, 0);
         return utcNow + offset;
     }
 
     bool IsInTournamentTime(DateTime pstTime)
     {
-        TimeSpan startTime = new TimeSpan(18, 30, 0); // 6:30 PM PST
+        TimeSpan startTime = new TimeSpan(18, 50, 0); // 6:50 PM PST
         TimeSpan endTime = new TimeSpan(19, 0, 0);    // 7:00 PM PST
         TimeSpan currentTime = pstTime.TimeOfDay;
 
@@ -59,16 +71,18 @@ public class TimeHandler : MonoBehaviour
 
     void PerformTournamentActionOnTime()
     {
-        InfoText.color = Color.green;
+        InfoText.fontSize = 28;
         Debug.Log("Tournament time! Performing action...");
         TournamentPanel.SetActive(true);
-        InfoText.text = "Available Tournaments";
+        InfoText.text = "My Own Pee Wee Event";
+        InfoText.color = Color.green;
+        InfoText2.color = Color.green;
     }
 
     void PerformTournamentActionNonTime()
     {
-        InfoText.color = Color.red;
-        InfoText.text = "No available Tournaments!";
+        InfoText.fontSize = 23;
+        InfoText.text = "The Pee Wee Shootout\n 6:50PM starts at 7PM PST.";
         TournamentPanel.SetActive(false);
     }
 }

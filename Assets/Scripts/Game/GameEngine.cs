@@ -10,6 +10,7 @@ using System;
 
 public class GameEngine : MonoBehaviourPunCallbacks
 {
+    public static GameEngine Instance { get; private set; }
     public GameObject gameUI;
     enum TeamIndex
     {
@@ -60,6 +61,19 @@ public class GameEngine : MonoBehaviourPunCallbacks
     public List<GameObject> pathTiles;
     bool isPath;
     public int pathIndex;
+
+    private void Awake()
+    {
+    if (Instance == null)
+    {
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
+    else
+    {
+        Destroy(gameObject);
+    }
+    }
 
     public void PathFind(GameObject origin)
     {
@@ -1656,7 +1670,7 @@ public class GameEngine : MonoBehaviourPunCallbacks
                     if (!isEndedByMines && !isIncreasedByMines && !isMoveAnimation && !isIncreasedByBermuda)
                     {
                         isShowWinning = true;
-                        EndTurn();
+                        if (MultiEngine.Instance == null || !MultiEngine.Instance.IsWaitingForServerTurnChange) { EndTurn(); }
                     }
                 }
             }
@@ -3959,7 +3973,7 @@ public class GameEngine : MonoBehaviourPunCallbacks
                             if (isEndedByMines || isIncreasedByMines)
                             {
                                 isShowWinning = true;
-                                EndTurn();
+                                if (MultiEngine.Instance == null || !MultiEngine.Instance.IsWaitingForServerTurnChange) { EndTurn(); }
                             }
                         }
                     }
@@ -6023,7 +6037,7 @@ public class GameEngine : MonoBehaviourPunCallbacks
                 if (isIncreasedByBermuda)
                 {
                     isShowWinning = true;
-                    EndTurn();
+                    if (MultiEngine.Instance == null || !MultiEngine.Instance.IsWaitingForServerTurnChange) { EndTurn(); }
                 }
             }
         }
@@ -9078,6 +9092,8 @@ public class GameEngine : MonoBehaviourPunCallbacks
     public void EndTurn()
     {
         //isSelectedSync = false;
+
+        
 
         if (whoseTurn == (int)TurnIndex.Player1 && isMasterInGame)
         {       

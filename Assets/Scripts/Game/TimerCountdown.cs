@@ -18,7 +18,7 @@ public class TimerCountdown : MonoBehaviour {
 		myAnim = GetComponent<Animation>();				
 	}
 
-	void Update() {	
+	void Update() {
         if (MainUI.Instance.isTimeRefreshed)
         {
 			print("here");
@@ -33,20 +33,38 @@ public class TimerCountdown : MonoBehaviour {
 				CountDown();
 			}			
 		} else {
-			if(Time.timeSinceLevelLoad >= levelTagTimer) {
+			// Use unscaled time so countdown continues even when the app loses focus
+			if(Time.unscaledTime >= levelTagTimer) {
 				startCounter = true;
 			}
 		}
 	}
 
 	void CountDown() {
-		timeRemaining = startTime - (Time.timeSinceLevelLoad - levelTagTimer);
+		// Use unscaled time so countdown isn't affected by timeScale or focus changes
+		timeRemaining = startTime - (Time.unscaledTime - levelTagTimer);
 
 		if(timeRemaining <= 0) {
 			timeRemaining = 0;
 			myAnim.Stop("Timer blink");
-			MainUI.Instance.isEndEvent = true;
-			print("stoped");
+			if (MainUI.Instance != null)
+        	MainUI.Instance.isEndEvent = false; // prevent unwanted leave/reset
+			print("Timer stopped, switching turn (unscaledTime-based)...");
+
+			// 🧠 Use MultiEngine for networked turn switch
+			if (MultiEngine.Instance != null)
+			{
+				MultiEngine.Instance.HandleTimerTurnEnd();
+			}
+			else if (GameEngine.Instance != null)
+			{
+				// fallback for offline/AI
+				GameEngine.Instance.ChangeTurn();
+			}
+
+			// // ✅ Optional: reset the timer for the new player (if needed)
+			// startCounter = false;
+			// MainUI.Instance.isTimeRefreshed = true;
 		}
 
 		if(timeRemaining <= 10) {
@@ -55,6 +73,30 @@ public class TimerCountdown : MonoBehaviour {
 			countDownTimeText.color = Color.magenta;
 		}
 
+		ShowTime();
+	}
+
+	// Reset and start the countdown for a new turn
+	public void StartNewTurn(float durationSeconds)
+	{
+		if (durationSeconds <= 0)
+		{
+			return;
+		}
+		startTime = durationSeconds;
+		timeRemaining = startTime;
+		// Anchor to current unscaled time to avoid drift/pauses
+		levelTagTimer = Time.unscaledTime;
+		startCounter = true;
+		if (countDownTimeText != null)
+		{
+			countDownTimeText.color = Color.white;
+		}
+		if (myAnim != null)
+		{
+			myAnim.Stop("Timer blink");
+		}
+		print($"TimerCountdown: StartNewTurn with duration={durationSeconds}s at t={Time.unscaledTime}");
 		ShowTime();
 	}
 

@@ -1,4 +1,5 @@
 using UnityEngine;
+using System;
 using Photon.Pun;
 using Photon.Realtime;
 using System.Collections.Generic;
@@ -36,18 +37,32 @@ public class TabFocusHandler : MonoBehaviourPunCallbacks
     // Method called when focus is lost (JavaScript event triggers this)
     public void OnTabLostFocus()
     {
-        Debug.LogError("Tab lost focus.");
+        Debug.Log("Tab lost focus.");
         photonView.RPC("NotifyOpponentPaused", RpcTarget.Others, true);
     }
 
     // Method called when focus is regained
     public void OnTabGainedFocus()
     {
-        Debug.LogError("Tab gained focus.");
+        Debug.Log("Tab gained focus.");
         photonView.RPC("NotifyOpponentPaused", RpcTarget.Others, false);
 
         
         SendRecordedActions();
+        // Attempt to upload collected logs to the remote server when focus is regained.
+        // Configure the endpoint on your Laravel backend (example: https://yourdomain.com/api/unity-logs)
+        try
+        {
+            if (RemoteLogger.Instance != null)
+            {
+                // NOTE: replace this URL with your Laravel endpoint that accepts POST JSON with CORS enabled.
+                RemoteLogger.Instance.UploadLogsNow("https://compasshero.com/api/unity-logs");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("Failed to trigger RemoteLogger upload: " + ex.Message);
+        }
     }
 
  
@@ -93,12 +108,33 @@ public class TabFocusHandler : MonoBehaviourPunCallbacks
 
 
            
-               Debug.LogError("whose turn in opponenet unpaused" + multi.whoseTurn);
+               Debug.Log("whose turn in opponenet unpaused " + multi.whoseTurn);
 
             if (multi.players[multi.whoseTurn].GetComponent<PlayerInfo>().playTimes <= 0)
             {
-                //    multi.SyncTurn(new object[] { multi.whoseTurn, multi.players[multi.whoseTurn].GetComponent<PlayerInfo>().playTimes });
-                multi.SyncTurn(new object[] { multi.whoseTurn==0?1:0});
+                // Prepare authoritative current turn and remaining playTimes to resync clients.
+                object[] payload = new object[] { multi.whoseTurn, multi.players[multi.whoseTurn].GetComponent<PlayerInfo>().playTimes };
+                Debug.Log("TabFocusHandler: prepared SyncTurn payload on focus regain: " + payload[0] + ", playTimes=" + payload[1]);
+
+                // Only the master client should broadcast authoritative turn-syncs. Non-master clients must not call SyncTurn()
+                // because that can cause transient, non-authoritative flips. If this client is master, send the sync now.
+                if (PhotonNetwork.IsMasterClient)
+                {
+                    if (multi.IsWaitingForServerTurnChange)
+                    {
+                        Debug.Log("TabFocusHandler: master is already waiting for server turn change; skipping SyncTurn.");
+                    }
+                    else
+                    {
+                        Debug.Log("TabFocusHandler: master sending SyncTurn payload on focus regain.");
+                        multi.SyncTurn(payload);
+                    }
+                }
+                else
+                {
+                    // Non-master: do not broadcast authoritative SyncTurn. Optionally notify master to resend state.
+                    Debug.Log("TabFocusHandler: non-master regained focus — not sending SyncTurn to avoid non-authoritative turn changes.");
+                }
 
             }
             photonView.RPC("SyncTime", RpcTarget.All, multi.bootingObject.GetComponent<GameSettingsApplier>().getCurrentval());
